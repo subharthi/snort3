@@ -20,6 +20,7 @@
 #include "framework/data_bus.h"
 #include "main/policy.h"
 #include "protocols/packet.h"
+#include <iostream>
 
 DataBus& get_data_bus()
 { return get_inspection_policy()->dbus; }
@@ -79,6 +80,8 @@ void DataBus::publish(const char* key, DataEvent& e, Flow* f)
 
 void DataBus::publish(const char* key, const uint8_t* buf, unsigned len, Flow* f)
 {
+    //Subharthi
+   // std::cout << "Publish:" << key  << std::endl;
     BufferEvent e(buf, len);
     publish(key, e, f);
 }

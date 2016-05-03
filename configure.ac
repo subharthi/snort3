@@ -30,7 +30,11 @@ AC_CONFIG_SRCDIR([src/main.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h src/framework/api_options.h])
 
-AM_INIT_AUTOMAKE(foreign nostdinc)
+#Project Dominoes: Subharthi Paul <subharpa@cisco.com>
+# Added subdir-objects
+AM_INIT_AUTOMAKE([foreign nostdinc  subdir-objects])
+LT_INIT
+
 AM_SILENT_RULES([yes])
 
 AC_PROG_CC([clang gcc])
@@ -44,6 +48,7 @@ AC_PROG_MAKE_SET
 AC_PROG_LIBTOOL
 AC_C_BIGENDIAN
 AC_C_INLINE
+
 
 # g++ 4.7 will pass the c++11 check but is not sufficient
 if test "x$CXX" = "xg++" ; then
@@ -547,6 +552,19 @@ fi
 
 AM_CONDITIONAL(BUILD_PIGLET, test "x$enable_piglet" = "xyes")
 
+#---------------------------------------------------------------------------
+# Dominoes <Subharthi Paul:subharpa@cisco.com>
+#---------------------------------------------------------------------------
+AC_ARG_ENABLE(dominoes,
+    AC_HELP_STRING([--enable-dominoes],[build dominoes]),
+    enable_dominoes="$enableval", enable_dominoes="no")
+
+if test "x$enable_dominoes" = "xyes"; then
+    AC_DEFINE(DOMINOES, [1], [enable dominoes in build])
+fi
+
+AM_CONDITIONAL(BUILD_DOMINOES, [test "x$enable_dominoes" = "xyes"])
+
 #--------------------------------------------------------------------------
 # pcap
 #--------------------------------------------------------------------------
@@ -982,6 +1000,9 @@ if test "x$enable_intel_soft_cpm" = "xyes"; then
     AC_DEFINE(INTEL_SOFT_CPM, [1], [enable intel cpm support in build])
 fi
 
+# Project dominoes <Subharthi Paul>
+LIBS="${LIBS} -lboost_thread -lboost_system"
+
 #--------------------------------------------------------------------------
 # hyperscan (optional)
 #--------------------------------------------------------------------------
@@ -1043,7 +1064,8 @@ if test "x${CODE_COVERAGE_ENABLED}" = "xyes" ; then
 fi
 
 # Global defaults for AM_* flags.  Can be overridden on a per-Makefile.am basis.
-AM_CPPFLAGS='-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/src/network_inspectors'
+AM_CPPFLAGS='-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/src/network_inspectors -I$(top_srcdir)/src/actions/dominoes/accumulators -I$(top_srcdir)/src/actions/dominoes/rollup -DREAL_PACKETS'
+
 AM_CPPFLAGS="${AM_CPPFLAGS} ${CODE_COVERAGE_CPPFLAGS}"
 AM_CFLAGS="${CODE_COVERAGE_CFLAGS}"
 AM_CXXFLAGS="${CODE_COVERAGE_CXXFLAGS}"
@@ -1063,11 +1085,15 @@ AC_SUBST(snort2lua_CPPFLAGS)
 AC_SUBST(CPPUTEST_CPPFLAGS)
 AC_SUBST(CPPUTEST_LDFLAGS)
 
+# Dominoes Subharthi Paul <subharpa@cisco.com>
 AC_CONFIG_FILES([ \
 snort.pc \
 Makefile \
 src/Makefile \
 src/actions/Makefile \
+src/actions/dominoes/Makefile \
+src/actions/dominoes/accumulators/Makefile \
+src/actions/dominoes/rollup/Makefile \
 src/codecs/Makefile \
 src/codecs/root/Makefile \
 src/codecs/link/Makefile \

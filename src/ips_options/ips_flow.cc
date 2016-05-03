@@ -62,6 +62,8 @@ struct FlowCheckData
     uint8_t stateless;
     uint8_t established;
     uint8_t unestablished;
+    /* Project Dominoes Author:Subharthi Paul */
+    uint8_t tcp_handshake_third_packet;
 };
 
 class FlowCheckOption : public IpsOption
@@ -116,7 +118,9 @@ bool FlowCheckOption::operator==(const IpsOption& ips) const
         ( left->only_reassembled == right->only_reassembled) &&
         ( left->stateless == right->stateless) &&
         ( left->established == right->established) &&
-        ( left->unestablished == right->unestablished))
+        ( left->unestablished == right->unestablished) &&
+	 /* Project Dominoes Subharthi Paul <subharpa@cisco.com>*/
+        ( left->tcp_handshake_third_packet == right->tcp_handshake_third_packet))
     {
         return true;
     }
@@ -143,6 +147,17 @@ int FlowCheckOption::eval(Cursor&, Packet* p)
             //  We're looking for an unestablished stream, and this is
             //  established, so don't continue processing.
             return DETECTION_OPTION_NO_MATCH;
+        }
+    }
+    
+    /* Project Dominoes Author: Subharthi Paul <subharpa@cisco.com>*/
+    /* check if tcp_handshake_third_packet option is set */
+    if(fcd->tcp_handshake_third_packet)
+    {
+        if (!(p->packet_flags & PKT_STREAM_TWH))
+        {
+                /* Not the connection 3rd packet*/
+                return DETECTION_OPTION_NO_MATCH;
         }
     }
 
@@ -354,6 +369,10 @@ static const Parameter s_params[] =
     { "only_frag", Parameter::PT_IMPLIED, nullptr, nullptr,
       "match on defragmented packets only" },
 
+    /* Project Dominoes Subharthi Paul <subharpa@cisco.com>*/
+    { "tcp_handshake_third_packet", Parameter::PT_IMPLIED, nullptr, nullptr,
+      "match on the TCP connection setup third packet only" },
+
     { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
 };
 
@@ -382,6 +401,10 @@ bool FlowModule::begin(const char*, int, SnortConfig*)
 
 bool FlowModule::set(const char*, Value& v, SnortConfig*)
 {
+    /* Project Dominoes Subharthi Paul <subharpa@cisco.com> */
+    if (v.is("tcp_handshake_third_packet"))
+        data.tcp_handshake_third_packet = 1;
+
     if ( v.is("to_server") )
         data.from_client = 1;
 

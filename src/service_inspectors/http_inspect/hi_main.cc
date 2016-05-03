@@ -83,6 +83,9 @@
 #include "hi_norm.h"
 #include "hi_cmd_lookup.h"
 
+//Subharthi
+#include <iostream>
+
 const HiSearchToken hi_patterns[] =
 {
     { "<SCRIPT",         7,  HI_JAVASCRIPT },
@@ -666,6 +669,14 @@ int HttpInspectMain(HTTPINSPECT_CONF* conf, Packet* p)
         ClearHttpBuffers();
 
         iRet = hi_mi_mode_inspection(session, iInspectMode, p, hsd);
+	
+	/* Dominoes Subharthi Paul <subharpa@cisco.com> */
+	/* TODO: This field is parsed anyways so may not be a big perfromance hit just publishing it*/
+	get_data_bus().publish(
+                    "http_hostname", (hsd->log_state->hostname_extracted),
+                    hsd->log_state->hostname_bytes, p->flow);
+	//std::cout << std::string(reinterpret_cast<char*>(hsd->log_state->hostname_extracted)).substr(0, hsd->log_state->hostname_bytes) << std::endl;	
+
         if (iRet)
         {
             if (hsd)
@@ -716,7 +727,9 @@ int HttpInspectMain(HTTPINSPECT_CONF* conf, Packet* p)
                     session->client.request.uri_size);
 
                 p->packet_flags |= PKT_HTTP_DECODE;
-
+		
+		//Subharthi 
+		//std::cout << "Publishing uri" << std::endl;
                 get_data_bus().publish(
                     "http_uri", session->client.request.uri_norm,
                     session->client.request.uri_norm_size, p->flow);
@@ -1307,12 +1320,13 @@ int GetHttpHostnameData(Flow* flow, uint8_t** buf, uint32_t* len, uint32_t* type
     if (hsd == NULL)
         return 0;
 
+    
     if (hsd->log_state && hsd->log_state->hostname_bytes > 0)
     {
         *buf = hsd->log_state->hostname_extracted;
         *len = hsd->log_state->hostname_bytes;
         *type = EVENT_INFO_HTTP_HOSTNAME;
-        return 1;
+       return 1;
     }
 
     return 0;

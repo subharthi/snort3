@@ -65,6 +65,11 @@ using namespace std;
 #include "helpers/swapper.h"
 #include "time/periodic.h"
 
+/* Dominoes Subharthi Paul <subharpa@cisco.com> */
+#include "actions/dominoes/dominoes_detector_api.h"
+#include "actions/dominoes/dominoes_globals.h"
+#include "actions/dominoes/dominoes_timer_thread.h"
+
 #ifdef UNIT_TEST
 #include "catch/unit_test.h"
 #endif
@@ -289,6 +294,9 @@ void Pig::swap(Swapper* ps)
 
 static Pig* pigs = nullptr;
 static unsigned max_pigs = 0;
+
+/* Dominoes Subharthi Paul <subharpa@cisco.com> */
+static TimerThread* tthreads = nullptr;
 
 //-------------------------------------------------------------------------
 // main commands
@@ -820,12 +828,16 @@ static void main_loop()
         if ( !paused )
         {
             Pig& pig = pigs[idx];
+	    /* Dominoes Subharthi Paul <subharpa@cisco.com> */
+            TimerThread& tthread = tthreads[idx];
 
             if ( pig.analyzer )
             {
                 if ( pig.analyzer->is_done() )
                 {
                     pig.stop();
+		    /* Dominoes Subharthi Paul <subharpa@cisco.com> */
+		    tthread.stop(idx);
                     --swine;
                 }
             }
@@ -833,7 +845,20 @@ static void main_loop()
             {
                 Swapper* swapper = new Swapper(snort_conf, SFAT_GetConfig());
                 pig.start(src, swapper);
-                ++swine;
+       		/* Dominoes Subharthi Paul <subharpa@cisco.com> 
+		         Start the TimerThread
+                         Currently we are launching one timer thread for each data thread
+                         TODO: launch a common timer thread for all data threads */
+                if (pig.analyzer){
+                        tthread.start(idx, detector_list );
+                }
+                else {
+                        std::cout << "Error: Could not load the Timerthread" << std::endl;
+                        exit (-1);
+                }
+
+		++swine;
+		
                 continue;
             }
         }
@@ -852,6 +877,8 @@ static void snort_main()
     assert(max_pigs > 0);
 
     pigs = new Pig[max_pigs];
+    /* Dominoes Subharthi Paul <subharpa@cisco.com> */
+    tthreads = new TimerThread[max_pigs];
 
     for (unsigned idx = 0; idx < max_pigs; idx++)
     {

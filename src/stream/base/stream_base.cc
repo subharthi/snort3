@@ -93,14 +93,17 @@ void base_sum()
     SET_PROTO_COUNTS(udp, UDP);
     SET_PROTO_COUNTS(user, PDU);
     SET_PROTO_COUNTS(file, FILE);
-
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
     sum_stats((PegCount*)&g_stats, (PegCount*)&stream_base_stats,
-        array_size(base_pegs)-1);
+        array_size_v(base_pegs)-1);
 }
 
 void base_stats()
 {
-    show_stats((PegCount*)&g_stats, base_pegs, array_size(base_pegs)-1, MOD_NAME);
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
+    show_stats((PegCount*)&g_stats, base_pegs, array_size_v(base_pegs)-1, MOD_NAME);
 }
 
 void base_reset()

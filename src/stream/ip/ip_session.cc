@@ -158,7 +158,6 @@ bool IpSession::setup(Packet*)
     if ( flow_con->expected_session(flow, p))
     {
         ip_stats.sessions--; // Incremented in SESSION_STATS_ADD
-        MODULE_PROFILE_END(ip_perf_stats);
         return false;
 #endif
     return true;

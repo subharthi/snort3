@@ -421,6 +421,12 @@ static const Parameter s_params[] =
       "enable the interactive command line", },
 #endif
 
+// Project Dominoes: Subharthi Paul <subharpa@cisco.com>
+#ifdef DOMINOES
+    { "--dominoes",  Parameter::PT_IMPLIED, nullptr, nullptr,
+        "enable dominoes mode" },
+#endif
+
 #ifdef PIGLET
     { "--piglet", Parameter::PT_IMPLIED, nullptr, nullptr,
       "enable piglet test harness mode" },

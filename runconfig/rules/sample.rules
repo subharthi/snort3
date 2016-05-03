@@ -1,0 +1,4 @@
+alert tcp $EXTERNAL_NET $HTTP_PORTS -> $HOME_NET any ( msg:"BROWSER-FIREFOX Mozilla Firefox PKCS11 module installation code execution attempt"; flow:to_client,established; file_data; content:"window.pkcs11.addmodule|28|"; pcre:"/(caption,\x22\x5c\x5c\x5c|\x22\x5cn\x5cn\x5cn\x22\x20\x2b\x20str)/smi"; metadata:policy balanced-ips drop,policy security-ips drop,service http; reference:bugtraq,36343; reference:cve,2009-3076; classtype:attempted-user; sid:16142; rev:4; )
+
+alert tcp $HOME_NET any -> $EXTERNAL_NET $HTTP_PORTS ( msg:"BLACKLIST User-Agent known malicious User-Agent wget 3.0"; flow:to_server,established; http_header; content:"User-Agent|3A 20|wget|20 33 2E 30 0D 0A|"; metadata:impact_flag red,policy balanced-ips drop,policy security-ips drop,service http; reference:url,www.threatexpert.com/report.aspx?md5=a860efad636dba6ee1d270a1238a559c; classtype:trojan-activity; sid:19175; rev:3; )
+

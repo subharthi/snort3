@@ -147,7 +147,8 @@ static inline void fpLogOther(
 
     // rule actions are queued here (eg reject)
     if ( rtn->listhead->action )
-        ActionManager::queue(rtn->listhead->action);
+	/* extended for:Project Dominoes  Subharthi Paul <subharpa@cisco.com> */
+        ActionManager::queue(rtn->listhead->action,rtn, otn);
 }
 
 /*

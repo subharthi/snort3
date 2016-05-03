@@ -15,30 +15,47 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //--------------------------------------------------------------------------
-// ips_actions.cc author Russ Combs <rucombs@cisco.com>
 
-#include "ips_actions.h"
+// dominoes_module.h author Subharthi Paul <subharpa@cisco.com>
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#ifndef DOMINOES_MODULE_H
+#define DOMINOES_MODULE_H
 
-#ifdef STATIC_IPS_ACTIONS
-extern const BaseApi* act_react;
-extern const BaseApi* act_reject;
-#endif
-extern const BaseApi* act_dominoes;
-extern const BaseApi* act_replace;
+#include "main/snort_types.h"
+#include "framework/module.h"
+#include "flow/flow_control.h"
+#include "dominoes_config.h"
 
-/* Project Dominoes: Subharthi Paul <subharpa@cisco.com> */
-const BaseApi* ips_actions[] =
+//extern THREAD_LOCAL ProfileStats s5PerfStats;
+struct SnortConfig;
+
+//-------------------------------------------------------------------------
+// dominoes module
+//-------------------------------------------------------------------------
+
+#define DOMINOES_NAME "dominoes_alert"
+#define DOMINOES_HELP "inline statistical preprocessor"
+
+
+class DominoesModule : public Module
 {
-#ifdef STATIC_IPS_ACTIONS
-    act_react,
-    act_reject,
-#endif
-    act_dominoes,
-    act_replace,
-    nullptr,
+    public:
+    DominoesModule();
+    ~DominoesModule();
+
+    bool set(const char*, Value&, SnortConfig*) override;
+    bool begin(const char*, int, SnortConfig*) override;
+    //    bool end(const char*, int, SnortConfig*) override;
+
+    DominoesModuleConfig* get_conf_data();
+
+
+    private:
+    DominoesModuleConfig* conf;
+    std::string dominoes_detector_scripts_path;
 };
+
+
+#endif
+
 

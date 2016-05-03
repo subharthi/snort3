@@ -107,7 +107,10 @@ connectors/libconnectors.a \
 connectors/file_connector/libfile_connector.a \
 side_channel/libside_channel.a \
 ports/libports.a \
-utils/libutils.a
+utils/libutils.a \
+actions/dominoes/libdominoes.a \
+actions/dominoes/accumulators/libstatistics.a \
+actions/dominoes/rollup/librollup.a
 
 SUBDIRS = \
 actions \

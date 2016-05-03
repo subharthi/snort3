@@ -57,8 +57,11 @@ public:
 
     virtual void exec(Packet*) = 0;
 
+    /* method added for Project Dominoes: Subharthi Paul: <subharpa@cisco.com> */
+    virtual void exec_context(const Packet* p, const OptTreeNode* otn ) {}
+
     const char* get_name() const { return name; }
-    ActionType get_action() { return action; }
+    ActionType get_action() { return action; } 
 
 protected:
     IpsAction(const char* s, ActionType a)

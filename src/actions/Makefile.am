@@ -32,3 +32,7 @@ libact_reject_la_CXXFLAGS = $(AM_CXXFLAGS) -DBUILDING_SO
 libact_reject_la_LDFLAGS = $(AM_LDFLAGS) -export-dynamic -shared
 libact_reject_la_SOURCES = act_reject.cc
 endif
+
+# Dominoes Subharthi Paul <subharpa@cisco.com>
+SUBDIRS = \
+dominoes

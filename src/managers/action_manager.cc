@@ -50,6 +50,10 @@ static AList s_actors;
 static IpsAction* s_reject = nullptr;
 static THREAD_LOCAL IpsAction* s_action = nullptr;
 
+/* Extended for Project Dominoes: Subharthi Paul <subharpa@cisco.com> */
+IpsAction* s_action_context = nullptr;
+static thread_local std::list<const OptTreeNode*> s_otn;
+
 //-------------------------------------------------------------------------
 // action plugins
 //-------------------------------------------------------------------------
@@ -139,18 +143,43 @@ void ActionManager::thread_term(SnortConfig*)
             p.api->tterm();
 }
 
+/* Extended for Project Dominoes: Subharthi Paul <subharpa@cisco.com> 
+*  Check if s_action_context is not null indiating pending dominoes_alert
+*  Since the execute function is called once per packet, we record the events generated in a list 
+*  and call the exec_context function once for each event
+*/
 void ActionManager::execute(Packet* p)
 {
-    if ( s_action )
+   if (s_action_context){
+                for (auto& otn_node : s_otn){
+                        s_action_context->exec_context(p,otn_node);
+                }
+                s_otn.clear();
+                s_action_context = nullptr;
+   } else 
+   if ( s_action )
     {
         s_action->exec(p);
         s_action = nullptr;
     }
 }
 
-void ActionManager::queue(IpsAction* a)
+/* Project Dominoes: Subharthi Paul <subharpa@cisco.com> 
+*
+* Extending the 
+* Previously:  ActionManager::queue(IpsAction* a)
+* Now: ActionManager::queue(IpsAction* a, RuleTreeNode* rtn, OptTreeNode* otn)
+* This is to propagate the rule gid and sid to the IPSAction Module
+* Note, we are storing the otn in a list 
+*/
+void ActionManager::queue(IpsAction* a, const RuleTreeNode* rtn, const OptTreeNode* otn)
 {
-    if ( !s_action || a->get_action() > s_action->get_action() )
+   if (!strcmp(a->get_name(),"dominoes_alert"))
+   {
+                s_action_context = a;
+                s_otn.push_back(otn);
+   } else 
+   if ( !s_action || a->get_action() > s_action->get_action() )
         s_action = a;
 }
 
@@ -177,12 +206,19 @@ void ActionManager::queue_reject(const Packet* p)
         return;
     }
     if ( s_reject )
-        queue(s_reject);
+	/* Project Dominoes: Subharthi Paul <subharpa@cisco.com> */
+        /* Note: the signature of the queue function has changed */
+        queue(s_reject, nullptr, nullptr);
 }
 
 void ActionManager::reset_queue()
 {
     s_action = nullptr;
+
+    /* Extended for Project Dominoes Subharthi Paul <subharpa@cisco.com> */
+    s_action_context = nullptr;
+    s_otn.clear();
+
     Replace_ResetQueue();
 }
 

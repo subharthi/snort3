@@ -244,7 +244,9 @@ void pc_sum()
 
 void pc_accum()
 {
-    sum_stats((PegCount*)&gpc, (PegCount*)&pc, array_size(pc_names)-1);
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
+    sum_stats((PegCount*)&gpc, (PegCount*)&pc, array_size_v(pc_names)-1);
 }
 
 //-------------------------------------------------------------------------
@@ -284,7 +286,9 @@ void DropStats()
 
     DAQStats daq_stats;
     get_daq_stats(daq_stats);
-    show_stats((PegCount*)&daq_stats, daq_names, array_size(daq_names)-1, "daq");
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
+    show_stats((PegCount*)&daq_stats, daq_names, array_size_v(daq_names)-1, "daq");
 
     PacketManager::dump_stats();
     //mpse_print_qinfo();
@@ -304,10 +308,14 @@ void DropStats()
     print_file_stats();
 
     LogLabel("Summary Statistics");
-    show_stats((PegCount*)&gpc, pc_names, array_size(pc_names)-1, "detection");
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
+    show_stats((PegCount*)&gpc, pc_names, array_size_v(pc_names)-1, "detection");
 
     proc_stats.attribute_table_hosts = SFAT_NumberOfHosts();
-    show_stats((PegCount*)&proc_stats, proc_names, array_size(proc_names)-1, "process");
+    /* Dominoes Subharthi Paul <subharpa@cisco.com>
+       changed array_size to array_size_v to avoid clash with boost library */
+    show_stats((PegCount*)&proc_stats, proc_names, array_size_v(proc_names)-1, "process");
 
     if ( SnortConfig::log_verbose() )
         log_malloc_info();

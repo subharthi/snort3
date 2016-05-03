@@ -31,6 +31,8 @@
 #include "main/snort_types.h"
 #include "actions/actions.h"
 #include "framework/base_api.h"
+/* Dominoes Subharthi Paul <subharpa@cisco.com> */
+#include "detection/treenodes.h"
 
 #ifdef PIGLET
 #include "framework/ips_action.h"
@@ -77,7 +79,10 @@ public:
 
     static void reset_queue();
     static void queue_reject(const Packet*);
-    static void queue(IpsAction*);
+   
+   /* queue api extended for Project Dominoes: Subharthi Paul <subharpa@cisco.com> */
+    static void queue(IpsAction*, const RuleTreeNode* rtn ,const OptTreeNode* otn);
+ 
     static void execute(Packet*);
 
 #ifdef PIGLET

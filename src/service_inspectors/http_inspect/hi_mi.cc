@@ -39,7 +39,8 @@
 #include "hi_client.h"
 #include "hi_server.h"
 #include "hi_return_codes.h"
-
+//Subharthi
+#include <iostream>
 /*
 **  NAME
 **    hi_mi_mode_inspection::
