@@ -1,0 +1,28 @@
+CPPFLAGS= \
+		  -std=c++11 \
+		  -I. \
+		  -I.. \
+		  -I../include \
+		  -pg
+#-g
+
+all: libRollup.a
+
+SRCS = \
+	Rollup.cpp
+
+OBJS=$(SRCS:.cpp=.o)
+
+.depend: $(SRCS)
+	rm -f ./.depend
+	$(CXX) $(CPPFLAGS) -MM $^ > ./.depend
+
+-include .depend
+
+${OBJS}: ${SRCS} .depend Makefile
+
+libRollup.a: Rollup.o
+	ar rcs $@ $^
+
+clean:
+	rm -f ${OBJS} libRollup.a
