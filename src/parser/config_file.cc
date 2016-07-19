@@ -41,19 +41,18 @@
 #include "cmd_line.h"
 #include "mstring.h"
 
+#include "detection/detect.h"
+#include "main/snort.h"
 #include "main/snort_config.h"
 #include "main/snort_types.h"
 #include "main/snort_debug.h"
-#include "main/snort.h"
+#include "ips_options/ips_flowbits.h"
+#include "managers/event_manager.h"
+#include "packet_io/sfdaq.h"
+#include "packet_io/sfdaq_config.h"
+#include "sfip/sf_ip.h"
 #include "utils/dnet_header.h"
 #include "utils/util.h"
-#include "utils/strvec.h"
-#include "utils/snort_bounds.h"
-#include "ips_options/ips_flowbits.h"
-#include "packet_io/sfdaq.h"
-#include "managers/event_manager.h"
-#include "detection/detect.h"
-#include "sfip/sf_ip.h"
 
 #define LOG_NONE    "none"
 #define LOG_DUMP    "dump"
@@ -271,7 +270,7 @@ void ConfigDstMac(SnortConfig* sc, const char* s)
         ParseError("format check failed: %s,  Use format like 12:34:56:78:90:1a", s);
         return;
     }
-    sc->eth_dst = (uint8_t*)SnortAlloc (sizeof(dst.data));
+    sc->eth_dst = (uint8_t*)snort_calloc(sizeof(dst.data));
     memcpy(sc->eth_dst, dst.data, sizeof(dst.data));
 }
 
@@ -281,62 +280,6 @@ void ConfigLogDir(SnortConfig* sc, const char* args)
         return;
 
     sc->log_dir = args;
-}
-
-void ConfigDaqType(SnortConfig* sc, const char* args)
-{
-    if ( !args || !sc )
-        return;
-
-    // will be validated later after paths are established
-    sc->daq_type = args;
-}
-
-void ConfigDaqMode(SnortConfig* sc, const char* args)
-{
-    if ( !args || !sc )
-        return;
-
-    // will be validated later when daq is instantiated
-    sc->daq_mode = args;
-}
-
-void ConfigDaqVar(SnortConfig* sc, const char* args)
-{
-    if ( !args || !sc )
-        return;
-
-    if ( !sc->daq_vars )
-    {
-        sc->daq_vars = StringVector_New();
-
-        if ( !sc->daq_vars )
-        {
-            ParseError("can't allocate memory for daq_var '%s'.", args);
-            return;
-        }
-    }
-    if ( !StringVector_Add(sc->daq_vars, args) )
-        ParseError("can't allocate memory for daq_var '%s'.", args);
-}
-
-void ConfigDaqDir(SnortConfig* sc, const char* args)
-{
-    if ( !args || !sc )
-        return;
-
-    if ( !sc->daq_dirs )
-    {
-        sc->daq_dirs = StringVector_New();
-
-        if ( !sc->daq_dirs )
-        {
-            ParseError("can't allocate memory for daq_dir '%s'.", args);
-            return;
-        }
-    }
-    if ( !StringVector_Add(sc->daq_dirs, args) )
-        ParseError("can't allocate memory for daq_dir '%s'.", args);
 }
 
 void ConfigDirtyPig(SnortConfig* sc, const char*)
@@ -535,7 +478,7 @@ void ConfigTunnelVerdicts(SnortConfig* sc, const char* args)
 {
     char* tmp, * tok;
 
-    tmp = SnortStrdup(args);
+    tmp = snort_strdup(args);
     char* lasts = { 0 };
     tok = strtok_r(tmp, " ,", &lasts);
 
@@ -561,7 +504,7 @@ void ConfigTunnelVerdicts(SnortConfig* sc, const char* args)
 
         tok = strtok_r(NULL, " ,", &lasts);
     }
-    free(tmp);
+    snort_free(tmp);
 }
 
 void ConfigPluginPath(SnortConfig* sc, const char* args)

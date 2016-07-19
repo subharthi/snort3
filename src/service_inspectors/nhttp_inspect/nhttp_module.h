@@ -42,14 +42,17 @@ public:
         UriParam();
         ~UriParam() { delete[] unicode_map; }
 
-        bool percent_u;
-        bool utf8;
-        bool utf8_bare_byte;
-        bool iis_unicode;
+        bool percent_u = false;
+        bool utf8 = true;
+        bool utf8_bare_byte = false;
+        bool iis_unicode = false;
+        std::string iis_unicode_map_file;
+        int iis_unicode_code_page = 1252;
         uint8_t* unicode_map = nullptr;
-        bool backslash_to_slash;
-        bool plus_to_space;
-        bool simplify_path;
+        bool iis_double_decode = false;
+        bool backslash_to_slash = false;
+        bool plus_to_space = true;
+        bool simplify_path = true;
         std::bitset<256> bad_characters;
         std::bitset<256> unreserved_char;
         NHttpEnums::CharAction uri_char[256];
@@ -60,6 +63,7 @@ public:
     bool test_output;
     long print_amount;
     bool print_hex;
+    bool show_pegs;
 #endif
 };
 
@@ -80,10 +84,26 @@ public:
         return ret_val;
     }
 
+    const PegInfo* get_pegs() const override { return peg_names; }
+    PegCount* get_counts() const override { return peg_counts; }
+    static void increment_peg_counts(NHttpEnums::PEG_COUNT counter)
+        { peg_counts[counter]++; return; }
+
+#ifdef REG_TEST
+    static const PegInfo* get_peg_names() { return peg_names; }
+    static const PegCount* get_peg_counts() { return peg_counts; }
+    static void reset_peg_counts()
+    {
+        for (unsigned k=0; k < NHttpEnums::PEG_COUNT_MAX; peg_counts[k++] = 0);
+    }
+#endif
+
 private:
     static const Parameter nhttp_params[];
     static const RuleMap nhttp_events[];
     NHttpParaList* params = nullptr;
+    static const PegInfo peg_names[];
+    static THREAD_LOCAL PegCount peg_counts[];
 };
 
 #endif

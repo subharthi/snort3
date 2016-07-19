@@ -132,7 +132,7 @@ struct View
         state(otn_state)
     {
         if ( si )
-            // FIXIT-L J does sig_info need to be initialized otherwise?
+            // FIXIT-L does sig_info need to be initialized otherwise?
             sig_info = *si;
     }
 };
@@ -205,14 +205,14 @@ static std::vector<View> build_entries()
         if ( !state )
             continue;
 
-        // FIXIT-L J should we assert(otn->sigInfo)?
+        // FIXIT-L should we assert(otn->sigInfo)?
         entries.emplace_back(state, &otn->sigInfo);
     }
 
     return entries;
 }
 
-// FIXIT-L J logic duplicated from ProfilerPrinter
+// FIXIT-L logic duplicated from ProfilerPrinter
 static void print_single_entry(const View& v, unsigned n)
 {
     using std::chrono::duration_cast;
@@ -247,7 +247,7 @@ static void print_single_entry(const View& v, unsigned n)
     LogMessage("%s", ss.str().c_str());
 }
 
-// FIXIT-L J logic duplicated from ProfilerPrinter
+// FIXIT-L logic duplicated from ProfilerPrinter
 static void print_entries(std::vector<View>& entries, ProfilerSorter<View> sort, unsigned count)
 {
     std::ostringstream ss;
@@ -298,7 +298,7 @@ void show_rule_profiler_stats(const RuleProfilerConfig& config)
 
     auto sort = rule_stats::sorters[config.sort];
 
-    // FIXIT-L J do we eventually want to be able print rule totals, too?
+    // FIXIT-L do we eventually want to be able print rule totals, too?
     print_entries(entries, sort, config.count);
 }
 
@@ -443,7 +443,6 @@ TEST_CASE( "otn state", "[profiler][rule_profiler]" )
 
 TEST_CASE( "rule entry", "[profiler][rule_profiler]" )
 {
-    SigInfo sig_info;
     auto entry = make_rule_entry(3_ticks, 2_ticks, 3, 2);
     entry.state.alerts = 77;
     entry.state.latency_timeouts = 5;
@@ -736,5 +735,17 @@ TEST_CASE( "rule profiler time context", "[profiler][rule_profiler]" )
     }
 }
 
+TEST_CASE( "rule pause", "[profiler][rule_profiler]" )
+{
+    dot_node_state_t stats;
+    RuleContext ctx(stats);
+
+    {
+        RulePause pause(ctx);
+        CHECK_FALSE( ctx.active() );
+    }
+
+    CHECK( ctx.active() );
+}
 
 #endif

@@ -31,7 +31,6 @@
 #include "main/snort_config.h"
 #include "main/snort_debug.h"
 #include "main/snort_debug.h"
-#include "utils/snort_bounds.h"
 #include "utils/util.h"
 #include "flow/flow_control.h"
 #include "flow/flow_cache.h"
@@ -87,7 +86,7 @@ void Stream::delete_session(const FlowKey* key)
 //-------------------------------------------------------------------------
 
 Flow* Stream::get_session_ptr_from_ip_port(
-    uint8_t type, uint8_t proto,
+    PktType type, IpProtocol proto,
     const sfip_t* srcIP, uint16_t srcPort,
     const sfip_t* dstIP, uint16_t dstPort,
     uint16_t vlan, uint32_t mplsId, uint16_t addressSpaceId)
@@ -105,7 +104,7 @@ void Stream::populate_session_key(Packet* p, FlowKey* key)
         return;
 
     key->init(
-        (uint8_t)p->type(), p->get_ip_proto_next(),
+        p->type(), p->get_ip_proto_next(),
         p->ptrs.ip_api.get_src(), p->ptrs.sp,
         p->ptrs.ip_api.get_dst(), p->ptrs.dp,
         // if the vlan protocol bit is defined, vlan layer gauranteed to exist
@@ -116,13 +115,8 @@ void Stream::populate_session_key(Packet* p, FlowKey* key)
 
 FlowKey* Stream::get_session_key(Packet* p)
 {
-    FlowKey* key = (FlowKey*)calloc(1, sizeof(*key));
-
-    if (!key)
-        return NULL;
-
+    FlowKey* key = (FlowKey*)snort_calloc(sizeof(*key));
     populate_session_key(p, key);
-
     return key;
 }
 
@@ -138,7 +132,7 @@ FlowData* Stream::get_application_data_from_key(
 }
 
 FlowData* Stream::get_application_data_from_ip_port(
-    uint8_t type, uint8_t proto,
+    PktType type, IpProtocol proto,
     const sfip_t* srcIP, uint16_t srcPort,
     const sfip_t* dstIP, uint16_t dstPort,
     uint16_t vlan, uint32_t mplsId,
@@ -171,7 +165,7 @@ void Stream::check_session_closed(Packet* p)
     if (flow->session_state & STREAM_STATE_CLOSED)
     {
         assert(flow_con);
-        // FIXIT-L J prune reason was actually 'closed'
+        // FIXIT-L prune reason was actually 'closed'
         flow_con->delete_flow(flow, PruneReason::USER);
         p->flow = nullptr;
     }
@@ -228,7 +222,7 @@ void Stream::stop_inspection(
     }
 
     /* Flush any queued data on the client and/or server */
-    if (flow->protocol == PktType::TCP)
+    if (flow->pkt_type == PktType::TCP)
     {
         if (flow->ssn_state.ignore_direction & SSN_DIR_FROM_CLIENT)
             flow->session->flush_client(p);
@@ -237,7 +231,7 @@ void Stream::stop_inspection(
             flow->session->flush_server(p);
     }
 
-    /* FIXIT: Handle bytes/response parameters */
+    /* FIXIT-M handle bytes/response parameters */
 
     DisableInspection();
     flow->set_state(Flow::ALLOW);
@@ -376,7 +370,7 @@ void Stream::set_application_protocol_id_from_host_entry(
         flow->server_port, SFAT_SERVICE);
 
 #if 0
-    // FIXIT - from client doesn't imply need to swap
+    // FIXIT-M from client doesn't imply need to swap
     if (direction == FROM_CLIENT)
     {
         if ( application_protocol &&
@@ -560,7 +554,7 @@ static void active_response(Packet* p, Flow* lwssn)
 {
     uint8_t max = snort_conf->max_responses;
 
-    if ( p->packet_flags & PKT_FROM_CLIENT )
+    if ( p->is_from_client() )
         lwssn->session_state |= STREAM_STATE_DROP_CLIENT;
     else
         lwssn->session_state |= STREAM_STATE_DROP_SERVER;
@@ -587,15 +581,15 @@ bool Stream::blocked_session(Flow* flow, Packet* p)
         return false;
 
     if (
-        ((p->packet_flags & PKT_FROM_SERVER) &&
+        ((p->is_from_server()) &&
         (flow->ssn_state.session_flags & SSNFLAG_DROP_SERVER)) ||
 
-        ((p->packet_flags & PKT_FROM_CLIENT) &&
+        ((p->is_from_client()) &&
         (flow->ssn_state.session_flags & SSNFLAG_DROP_CLIENT)) )
     {
         DebugFormat(DEBUG_STREAM_STATE,
             "Blocking %s packet as session was blocked\n",
-            p->packet_flags & PKT_FROM_SERVER ?  "server" : "client");
+            p->is_from_server() ?  "server" : "client");
 
         DisableDetect();
         Active::drop_packet(p);
@@ -607,14 +601,14 @@ bool Stream::blocked_session(Flow* flow, Packet* p)
 
 bool Stream::ignored_session(Flow* flow, Packet* p)
 {
-    if (((p->packet_flags & PKT_FROM_SERVER) &&
+    if (((p->is_from_server()) &&
         (flow->ssn_state.ignore_direction & SSN_DIR_FROM_CLIENT)) ||
-        ((p->packet_flags & PKT_FROM_CLIENT) &&
+        ((p->is_from_client()) &&
         (flow->ssn_state.ignore_direction & SSN_DIR_FROM_SERVER)) )
     {
         DebugFormat(DEBUG_STREAM_STATE,
-            "Stream Ignoring packet from %d. Session marked as ignore\n",
-            p->packet_flags & PKT_FROM_CLIENT ? "sender" : "responder");
+            "Stream Ignoring packet from %s. Session marked as ignore\n",
+            p->is_from_client() ? "sender" : "responder");
 
         DisableInspection();
         return true;
@@ -661,7 +655,7 @@ bool Stream::expired_session(Flow* flow, Packet* p)
 /* This should preferably only be called when ipprotocol is 0. */
 void Stream::set_ip_protocol(Flow* flow)
 {
-    switch (flow->protocol)
+    switch (flow->pkt_type)
     {
     case PktType::TCP:
         flow->ssn_state.ipprotocol = SNORT_PROTO_TCP;
@@ -839,7 +833,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_FROM_SERVER, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);
@@ -853,7 +846,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_ack_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_FROM_SERVER, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);
@@ -866,7 +858,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_FROM_CLIENT, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);
@@ -880,7 +871,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_ack_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_FROM_CLIENT, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);
@@ -893,7 +883,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_BOTH, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);
@@ -907,7 +896,6 @@ TEST_CASE("Stream API", "[stream_api][stream]")
     {
         Packet* pkt = get_syn_ack_packet(flow);
         pkt->flow->session = new TcpSession(flow);
-        int dir;
 
         Stream::stop_inspection(flow, pkt, SSN_DIR_BOTH, 0, 0);
         bool ignored = Stream::ignored_session(flow, pkt);

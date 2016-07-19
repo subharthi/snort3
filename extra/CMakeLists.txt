@@ -1,93 +1,37 @@
-if (BUILD_EXTRA_PLUGINS)
-    #  This condition is only true if this directory is included as
-    #  a subdirectory of the top level source directory.
+cmake_minimum_required ( VERSION 2.8.11 )
+project( snort_extra CXX C )
 
-    set(SNORT_EXECUTABLE $<TARGET_FILE:snort> CACHE INTERNAL "Snort binary" FORCE)
-    add_subdirectory(src)
+add_subdirectory ( src )
 
-else (BUILD_EXTRA_PLUGINS)
+set (EXTRA_VERSION_MAJOR 1)
+set (EXTRA_VERSION_MINOR 0)
+set (EXTRA_VERSION_BUILD 0-a4)
 
-    cmake_minimum_required(VERSION 2.8.8)
-    project(snort_extra CXX C)
+set (AUTOTOOL_FILES "autom4te.cache;m4;configure.ac;Makefile.am")
 
-    set (EXTRA_VERSION_MAJOR 1)
-    set (EXTRA_VERSION_MINOR 0)
-    set (EXTRA_VERSION_BUILD 0-a4)
-    set (VERSION "${EXTRA_VERSION_MAJOR}.${EXTRA_VERSION_MINOR}.${EXTRA_VERSION_BUILD}")
+set (CPACK_GENERATOR TGZ)
+set (CPACK_PACKAGE_NAME "snort_extra")
+set (CPACK_PACKAGE_VENDOR "Cisco")
+set (CPACK_PACKAGE_VERSION_MAJOR "${EXTRA_VERSION_MAJOR}")
+set (CPACK_PACKAGE_VERSION_MINOR "${EXTRA_VERSION_MINOR}")
+set (CPACK_PACKAGE_VERSION_PATCH "${EXTRA_VERSION_BUILD}")
+set (CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/doc/images/snort.png")
+set (CPACK_PACKAGE_INSTALL_DIRECTORY "snort")
+set (CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set (CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README")
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
+set (CPACK_SOURCE_IGNORE_FILES "${AUTOTOOL_FILES}")
+set (CPACK_SOURCE_GENERATOR TGZ)
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}")
+include(CPack)
 
-    # Look for Snort using pkg-config and our own find-snort module
+# hacks for the DAQ
+execute_process (
+    COMMAND pkg-config --variable=daq_cppflags snort
+    OUTPUT_VARIABLE DAQ_CPPFLAGS
+)
 
-    if (APPLE)
-        set(CMAKE_MACOSX_RPATH OFF)
-    endif(APPLE)
+string ( REGEX REPLACE "[\r\n]" " " DAQ_CPPFLAGS "${DAQ_CPPFLAGS}" )
 
-    find_package(DAQ REQUIRED)
-    find_package(Snort REQUIRED)
-    find_package(LuaJIT REQUIRED)
-
-
-    #  add Snort++ properties to the current build
-    string (REPLACE "-DHAVE_CONFIG_H" " " tmp_cmp_flags  "${SNORT_INTERFACE_COMPILE_OPTIONS}")
-    string (REPLACE ";" " " tmp_cmp_flags "${tmp_cmp_flags}")
-    string (STRIP "${CMAKE_CXX_FLAGS} ${tmp_cmp_flags}" tmp_cmp_flags)
-    set (CMAKE_CXX_FLAGS "${tmp_cmp_flags}" CACHE STRING
-        "Flags used by the compiler during all build types." FORCE)
-
-    include_directories(${SNORT_INTERFACE_INCLUDE_DIRECTORIES})
-
-    string(REPLACE ";" " " tmp_link_flags "${SNORT_INTERFACE_LINK_FLAGS}")
-    string (STRIP "${CMAKE_EXE_LINKER_FLAGS} ${tmp_link_flags}" tmp_link_flags)
-    set (CMAKE_EXE_LINKER_FLAGS "${tmp_link_flags}" CACHE STRING
-        "Flags used by the linker. " FORCE)
-
-
-    include(CheckCXXCompilerFlag)
-    set (CMAKE_REQUIRED_FLAGS "-fvisibility=hidden")
-    check_cxx_compiler_flag (${CMAKE_REQUIRED_FLAGS} HAVE_VISIBILITY)
-    if (HAVE_VISIBILITY)
-        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_REQUIRED_FLAGS} -DHAVE_VISIBILITY")
-    endif ()
-    unset(CMAKE_REQUIRED_FLAGS)
-
-    # Some shared library flags for the two platforms which I am using
-    set(CMAKE_REQUIRED_FLAGS "-Wl,-undefined,dynamic_lookup")
-    check_cxx_compiler_flag(${CMAKE_REQUIRED_FLAGS} HAVE_DYNAMIC_LOOKUP)
-    if(HAVE_DYNAMIC_LOOKUP)
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${CMAKE_REQUIRED_FLAGS}")
-    endif()
-    unset (CMAKE_REQUIRED_FLAGS)
-
-
-    set (CMAKE_REQUIRED_FLAGS "-Wl,-export-dynamic")
-    check_cxx_compiler_flag (${CMAKE_REQUIRED_FLAGS} HAVE_EXPORT_DYNAMIC)
-    if (HAVE_EXPORT_DYNAMIC)
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${CMAKE_REQUIRED_FLAGS}")
-    endif ()
-    unset(CMAKE_REQUIRED_FLAGS)
-
-
-    set (CMAKE_REQUIRED_FLAGS "-Wl,-shared")
-    check_cxx_compiler_flag (${CMAKE_REQUIRED_FLAGS} HAVE_SHARED)
-    if (HAVE_SHARED)
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${CMAKE_REQUIRED_FLAGS}")
-    endif ()
-    unset(CMAKE_REQUIRED_FLAGS)
-
-    add_subdirectory(src)
-
-
-    # adding make unisntall
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
-        IMMEDIATE @ONLY)
-
-    add_custom_target(uninstall
-        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
-
-    include (packaging_data.cmake)
-
-endif (BUILD_EXTRA_PLUGINS)
+set ( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${DAQ_CPPFLAGS}" )
+set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DAQ_CPPFLAGS}" )

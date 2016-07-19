@@ -188,7 +188,7 @@ void Wizard::eval(Packet* p)
         return;
 
     Wand wand;
-    reset(wand, false, p->packet_flags & PKT_FROM_CLIENT);
+    reset(wand, false, p->is_from_client());
 
     if ( cast_spell(wand, p->flow, p->data, p->dsize) )
         ++tstats.udp_hits;
@@ -208,8 +208,8 @@ bool Wizard::spellbind(
 
     if (f->service != nullptr)
     {
-        // FIXIT-H: Need to make sure Flow's ipproto and service
-        //          correspond to HostApplicationEntry's ipproto and service
+        // FIXIT-H need to make sure Flow's ipproto and service
+        // correspond to HostApplicationEntry's ipproto and service
         host_cache_add_service(f->server_ip, f->ip_proto, f->server_port, f->service);
         return true;
     }

@@ -21,14 +21,8 @@
 #include "config.h"
 #endif
 
-#include <assert.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/types.h>
-
 #include "ftp_module.h"
 #include "ftpp_si.h"
-#include "ftpp_ui_config.h"
 #include "ftpp_return_codes.h"
 #include "ftp_cmd_lookup.h"
 #include "ft_main.h"
@@ -40,15 +34,10 @@
 #include "telnet.h"
 
 #include "main/snort_types.h"
-#include "main/snort_debug.h"
-#include "stream/stream_api.h"
-#include "file_api/file_api.h"
-#include "parser/parser.h"
-#include "framework/inspector.h"
 #include "managers/inspector_manager.h"
-#include "detection/detection_util.h"
-#include "target_based/snort_protocols.h"
 #include "profiler/profiler.h"
+#include "target_based/snort_protocols.h"
+#include "utils/util.h"
 
 int16_t ftp_data_app_id = SFTARGET_UNKNOWN_PROTOCOL;
 
@@ -164,11 +153,11 @@ static int snort_ftp(Packet* p)
                 }
                 else
                 {
-                    if ( p->packet_flags & PKT_FROM_SERVER )
+                    if ( p->is_from_server() )
                     {
                         iInspectMode = FTPP_SI_SERVER_MODE;
                     }
-                    else if ( p->packet_flags & PKT_FROM_CLIENT )
+                    else if ( p->is_from_client() )
                     {
                         iInspectMode = FTPP_SI_CLIENT_MODE;
                     }
@@ -253,16 +242,10 @@ static int ProcessFTPDataChanCmdsList(
     {
         /* Add it to the list */
         // note that struct includes 1 byte for null, so just add len
-        FTPCmd = (FTP_CMD_CONF*)calloc(1, sizeof(FTP_CMD_CONF)+strlen(cmd));
-        if (FTPCmd == NULL)
-        {
-            ParseAbort("failed to allocate memory");
-        }
-
+        FTPCmd = (FTP_CMD_CONF*)snort_calloc(sizeof(FTP_CMD_CONF)+strlen(cmd));
         strcpy(FTPCmd->cmd_name, cmd);
 
-        // FIXIT-L make sure pulled from server conf when used if not
-        // overridden
+        // FIXIT-L make sure pulled from server conf when used if not overridden
         //FTPCmd->max_param_len = ServerConf->def_max_param_len;
 
         ftp_cmd_lookup_add(ServerConf->cmd_lookup, cmd,
@@ -297,21 +280,11 @@ static int ProcessFTPDataChanCmdsList(
         }
         else
         {
-            Fmt = (FTP_PARAM_FMT*)calloc(1, sizeof(FTP_PARAM_FMT));
-            if (Fmt == NULL)
-            {
-                ParseAbort("Failed to allocate memory");
-            }
-
+            Fmt = (FTP_PARAM_FMT*)snort_calloc(sizeof(FTP_PARAM_FMT));
             Fmt->type = e_head;
             FTPCmd->param_format = Fmt;
 
-            Fmt = (FTP_PARAM_FMT*)calloc(1, sizeof(FTP_PARAM_FMT));
-            if (Fmt == NULL)
-            {
-                ParseAbort("Failed to allocate memory");
-            }
-
+            Fmt = (FTP_PARAM_FMT*)snort_calloc(sizeof(FTP_PARAM_FMT));
             Fmt->type = e_strformat;
             FTPCmd->param_format->next_param_fmt = Fmt;
             Fmt->prev_param_fmt = FTPCmd->param_format;

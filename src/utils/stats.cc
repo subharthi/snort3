@@ -93,9 +93,9 @@ void LogLabel(const char* s, FILE* fh)
     }
 }
 
-void LogValue(const char* s, const char* v)
+void LogValue(const char* s, const char* v, FILE* fh)
 {
-    LogMessage("%25.25s: %s\n", s, v);
+    LogMessage(fh, "%25.25s: %s\n", s, v);
 }
 
 void LogCount(const char* s, uint64_t c, FILE* fh)
@@ -120,12 +120,12 @@ void LogStat(const char* s, double d, FILE* fh)
 
 static struct timeval starttime, endtime;
 
-void TimeStart(void)
+void TimeStart()
 {
     gettimeofday(&starttime, NULL);
 }
 
-void TimeStop(void)
+void TimeStop()
 {
     gettimeofday(&endtime, NULL);
 }
@@ -160,7 +160,7 @@ static void timing_stats()
 }
 
 //-------------------------------------------------------------------------
-// FIXIT-L need better encapsulation of these counts by their modules
+// FIXIT-L need better encapsulation of these daq counts by their modules
 
 const PegInfo daq_names[] =
 {
@@ -182,7 +182,6 @@ const PegInfo daq_names[] =
     { "internal blacklist", "packets blacklisted internally due to lack of DAQ support" },
     { "internal whitelist", "packets whitelisted internally due to lack of DAQ support" },
     { "skipped", "packets skipped at startup" },
-    { "fail open", "packets passed during initialization" },
     { "idle", "attempts to acquire from DAQ without available packets" },
     { nullptr, nullptr }
 };
@@ -227,7 +226,7 @@ const PegInfo proc_names[] =
 void pc_sum()
 {
     // must sum explicitly; can't zero; daq stats are cuumulative ...
-    const DAQ_Stats_t* daq_stats = DAQ_GetStats();
+    const DAQ_Stats_t* daq_stats = SFDAQ::get_stats();
 
     g_daq_stats.hw_packets_received += daq_stats->hw_packets_received;
     g_daq_stats.hw_packets_dropped += daq_stats->hw_packets_dropped;
@@ -239,6 +238,8 @@ void pc_sum()
         g_daq_stats.verdicts[i] += daq_stats->verdicts[i];
 
     sum_stats((PegCount*)&gaux, (PegCount*)&aux_counts, sizeof(aux_counts)/sizeof(PegCount));
+
+    //  FIXIT-H why do we set gaux in sum_stats then zero it here?
     memset(&gaux, 0, sizeof(gaux));
 }
 
@@ -274,7 +275,6 @@ void get_daq_stats(DAQStats& daq_stats)
     daq_stats.internal_blacklist = gaux.internal_blacklist;
     daq_stats.internal_whitelist = gaux.internal_whitelist;
     daq_stats.skipped = snort_conf->pkt_skip;
-    daq_stats.fail_open = gaux.total_fail_open;
     daq_stats.idle = gaux.idle;
 }
 
@@ -315,7 +315,7 @@ void DropStats()
 
 //-------------------------------------------------------------------------
 
-void PrintStatistics(void)
+void PrintStatistics()
 {
     DropStats();
     timing_stats();
@@ -325,7 +325,7 @@ void PrintStatistics(void)
     print_thresholding(snort_conf->threshold_config, 1);
 
     {
-        // FIXIT-L J can do flag saving with RAII (much cleaner)
+        // FIXIT-L can do flag saving with RAII (much cleaner)
         int save_quiet_flag = snort_conf->logging_flags & LOGGING_FLAG__QUIET;
 
         snort_conf->logging_flags &= ~LOGGING_FLAG__QUIET;

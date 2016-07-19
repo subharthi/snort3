@@ -52,13 +52,11 @@
 #include "main/snort_types.h"
 #include "main/snort_debug.h"
 #include "main/snort_config.h"
-#include "main/analyzer.h"
 #include "detection/detect.h"
 #include "detection/detection_util.h"
 #include "hash/sfxhash.h"
 #include "utils/util.h"
 #include "utils/sflsq.h"
-#include "utils/snort_bounds.h"
 #include "time/packet_time.h"
 #include "perf_monitor/flow_ip_tracker.h"
 #include "sfip/sf_ip.h"
@@ -72,7 +70,6 @@
 #include "stream/stream_splitter.h"
 #include "flow/flow_control.h"
 #include "flow/session.h"
-#include "flow/memcap.h"
 #include "profiler/profiler.h"
 #include "file_api/file_api.h"
 #include "normalize/normalize.h"
@@ -84,50 +81,24 @@
 #include "tcp_module.h"
 #include "tcp_event_logger.h"
 #include "tcp_debug_trace.h"
-
-#include "tcp_state_none.h"
-#include "tcp_state_closed.h"
-#include "tcp_state_listen.h"
-#include "tcp_state_syn_sent.h"
-#include "tcp_state_syn_recv.h"
-#include "tcp_state_established.h"
-#include "tcp_state_close_wait.h"
-#include "tcp_state_closing.h"
-#include "tcp_state_fin_wait1.h"
-#include "tcp_state_fin_wait2.h"
-#include "tcp_state_last_ack.h"
-#include "tcp_state_time_wait.h"
-
 #include "tcp_normalizers.h"
 #include "tcp_reassemblers.h"
+#include "tcp_stream_state_machine.h"
 #include "tcp_session.h"
 
 DEBUG_WRAP(const char* t_name = NULL; const char* l_name = NULL; )
 
 TcpSession::TcpSession(Flow* flow) : TcpStreamSession(flow)
 {
-    client = new TcpTracker(true);
-    server = new TcpTracker(false);
-
-    // initialize stream tracker state machine...
-    new TcpStateNone(tsm, *this);
-    new TcpStateClosed(tsm, *this);
-    new TcpStateListen(tsm, *this);
-    new TcpStateSynSent(tsm, *this);
-    new TcpStateSynRecv(tsm, *this);
-    new TcpStateEstablished(tsm, *this);
-    new TcpStateFinWait1(tsm, *this);
-    new TcpStateFinWait2(tsm, *this);
-    new TcpStateClosing(tsm, *this);
-    new TcpStateCloseWait(tsm, *this);
-    new TcpStateLastAck(tsm, *this);
-    new TcpStateTimeWait(tsm, *this);
+    tsm = TcpStreamStateMachine::get_instance();
+    client = new TcpTracker(true, this);
+    server = new TcpTracker(false, this);
 }
 
-TcpSession::~TcpSession(void)
+TcpSession::~TcpSession()
 {
     if (tcp_init)
-        clear_session(1);
+        clear_session(true, false, false);
 
     delete client;
     delete server;
@@ -137,11 +108,14 @@ bool TcpSession::setup(Packet* p)
 {
     TcpStreamSession::setup(p);
 
+    client->init_toolbox();
+    server->init_toolbox();
+
     SESSION_STATS_ADD(tcpStats);
     return true;
 }
 
-// FIXIT - once TcpReassembler interface is abstract class move this to base class
+// FIXIT-M once TcpReassembler interface is abstract class move this to base class
 void TcpSession::restart(Packet* p)
 {
     // sanity check since this is called externally
@@ -149,7 +123,7 @@ void TcpSession::restart(Packet* p)
 
     TcpStreamTracker* talker, * listener;
 
-    if (p->packet_flags & PKT_FROM_SERVER)
+    if (p->is_from_server())
     {
         talker = server;
         listener = client;
@@ -181,9 +155,22 @@ void TcpSession::restart(Packet* p)
 // make sense of the code in this file.
 //-------------------------------------------------------------------------
 
-void TcpSession::clear_session(int freeApplicationData)
+void TcpSession::clear_session(bool free_flow_data, bool flush_segments, bool restart, Packet* p)
 {
-    // update stats
+    if ( client->reassembler )
+    {
+        if( flush_segments )
+            client->reassembler->flush_queued_segments(flow, true, p);
+        client->reassembler->purge_segment_list();
+    }
+
+    if ( server->reassembler )
+    {
+        if( flush_segments )
+            server->reassembler->flush_queued_segments(flow, true, p);
+        server->reassembler->purge_segment_list();
+    }
+
     if ( tcp_init )
         tcpStats.released++;
     else if ( lws_init )
@@ -191,59 +178,34 @@ void TcpSession::clear_session(int freeApplicationData)
     else
         return;
 
-    update_perf_base_state(TcpStreamTracker::TCP_CLOSED);
-
     if (flow->get_session_flags() & SSNFLAG_PRUNED)
         tcpStats.prunes++;
     else if (flow->get_session_flags() & SSNFLAG_TIMEDOUT)
         tcpStats.timeouts++;
 
+    update_perf_base_state(TcpStreamTracker::TCP_CLOSED);
+
+    if( restart )
+    {
+        flow->restart(free_flow_data);
+        paf_reset(&client->paf_state);
+        paf_reset(&server->paf_state);
+
+    }
+    else
+    {
+        flow->clear(free_flow_data);
+        paf_clear(&client->paf_state);
+        paf_clear(&server->paf_state);
+    }
+
     set_splitter(true, nullptr);
     set_splitter(false, nullptr);
 
-    DebugFormat(DEBUG_STREAM_STATE, "In TcpSessionClear, %lu bytes in use\n", tcp_memcap->used());
-
-    if ( client->reassembler )
-    {
-        DebugFormat(DEBUG_STREAM_STATE, "client has %d segs queued, freeing all.\n",
-            client->reassembler->get_seg_count());
-        client->reassembler->purge_segment_list();
-    }
-
-    if ( server->reassembler )
-    {
-        DebugFormat(DEBUG_STREAM_STATE, "server has %d segs queued, freeing all\n",
-            server->reassembler->get_seg_count());
-        server->reassembler->purge_segment_list();
-    }
-
-    paf_clear(&client->paf_state);
-    paf_clear(&server->paf_state);
-
-    // update light-weight state
-    if ( freeApplicationData == 2 )
-        flow->restart(true);
-    else
-        flow->clear(freeApplicationData);
-
-    // generate event for rate filtering
     tel.log_internal_event(INTERNAL_EVENT_SESSION_DEL);
 
-    DebugFormat(DEBUG_STREAM_STATE, "After cleaning, %lu bytes in use\n", tcp_memcap->used());
-
-    lws_init = tcp_init = false;
-}
-
-void TcpSession::cleanup_session(int freeApplicationData, Packet* p)
-{
-    // FIXIT - this function does both client & server sides...refactor to do one and
-    // call for each
-    if ( client->reassembler != nullptr )
-        client->reassembler->flush_queued_segments(flow, true, p);
-    if ( server->reassembler != nullptr )
-        server->reassembler->flush_queued_segments(flow, true, p);
-
-    clear_session(freeApplicationData);
+    lws_init = false;
+    tcp_init = false;
 }
 
 void TcpSession::update_perf_base_state(char newState)
@@ -327,12 +289,11 @@ void TcpSession::update_perf_base_state(char newState)
     }
 
     flow->update_session_flags(session_flags);
-    tcpStats.mem_in_use = tcp_memcap->used();
 }
 
 bool TcpSession::flow_exceeds_config_thresholds(TcpSegmentDescriptor& tsd)
 {
-    if (listener->flush_policy == STREAM_FLPOLICY_IGNORE)
+    if ( listener->flush_policy == STREAM_FLPOLICY_IGNORE )
     {
         DebugMessage(DEBUG_STREAM_STATE, "Ignoring segment due to IGNORE flush_policy\n");
         return true;
@@ -341,8 +302,8 @@ bool TcpSession::flow_exceeds_config_thresholds(TcpSegmentDescriptor& tsd)
     if ( ( config->flags & STREAM_CONFIG_NO_ASYNC_REASSEMBLY ) && !flow->two_way_traffic() )
         return true;
 
-    if ( config->max_consec_small_segs && ( tsd.get_seg_len() <
-        config->max_consec_small_seg_size ) )
+    if ( config->max_consec_small_segs
+            && ( tsd.get_seg_len() < config->max_consec_small_seg_size ) )
     {
         listener->small_seg_count++;
 
@@ -490,7 +451,7 @@ int TcpSession::process_tcp_data(TcpSegmentDescriptor& tsd)
     return STREAM_UNALIGNED;
 }
 
-void TcpSession::set_os_policy(void)
+void TcpSession::set_os_policy()
 {
     StreamPolicy client_os_policy = flow->ssn_policy ?
         static_cast<StreamPolicy>( flow->ssn_policy ) : config->policy;
@@ -510,8 +471,8 @@ void TcpSession::set_os_policy(void)
         server->reassembler = TcpReassemblerFactory::create(this, server, server_os_policy, true);
 }
 
-// FIXIT - check for need to swap client/server is ifdef'ed out...
-void TcpSession::swap_trackers(void)
+// FIXIT-H this is no longer called (but should be)
+void TcpSession::swap_trackers()
 {
     uint32_t session_flags = flow->get_session_flags( );
     if ( ( session_flags & SSNFLAG_CLIENT_SWAP ) && !( session_flags & SSNFLAG_CLIENT_SWAPPED ) )
@@ -580,22 +541,21 @@ bool TcpSession::handle_syn_on_reset_session(TcpSegmentDescriptor& tsd)
     if ( ( listener->get_tcp_state() == TcpStreamTracker::TCP_CLOSED )
         || ( talker->get_tcp_state() == TcpStreamTracker::TCP_CLOSED ) )
     {
-        /* Listener previously issued a reset Talker is re-SYN-ing */
-        // FIXIT-L this leads to bogus 129:20
-        cleanup_session(1);
+        // Listener previously issued a reset Talker is re-SYN-ing
+        DebugMessage(DEBUG_STREAM_STATE, "Got SYN pkt on reset ssn, re-SYN-ing\n");
+
+        // FIXIT-M this leads to bogus 129:20
+        clear_session( true, true, true, tsd.get_pkt() );
 
         if ( tcph->is_rst() )
         {
-            /* FIXIT-M  In inline mode, only one of the normalizations
-             *           can occur.  If the first normalization
-             *           fires, there is nothing for the second normalization
-             *           to do.  However, in inline-test mode, since
-             *           nothing is actually normalized, both of the
-             *           following functions report that they 'would'
-             *           normalize. i.e., both functions increment their
-             *           count even though only one function can ever
-             *           perform a normalization.
-             */
+            // FIXIT-M  In inline mode, only one of the normalizations can
+            // occur.  If the first normalization fires, there is nothing
+            // for the second normalization to do.  However, in inline-test
+            // mode, since nothing is actually normalized, both of the
+            // following functions report that they 'would' normalize.
+            // i.e., both functions increment their count even though only
+            // one function can ever perform a normalization.
 
             /* Got SYN/RST.  We're done. */
             listener->normalizer->trim_syn_payload(tsd);
@@ -632,8 +592,6 @@ bool TcpSession::handle_syn_on_reset_session(TcpSegmentDescriptor& tsd)
             flow->update_session_flags(SSNFLAG_SEEN_SERVER);
         }
     }
-
-    DebugMessage(DEBUG_STREAM_STATE, "Got SYN pkt on reset ssn, re-SYN-ing\n");
 
     return true;
 }
@@ -699,7 +657,7 @@ void TcpSession::update_session_on_rst(TcpSegmentDescriptor& tsd, bool flush)
 void TcpSession::update_paws_timestamps(TcpSegmentDescriptor& tsd)
 {
     // update PAWS timestamps
-    DebugFormat(DEBUG_STREAM_STATE, "PAWS update tsd.seq %lu > listener->r_win_base %lu\n",
+    DebugFormat(DEBUG_STREAM_STATE, "PAWS update tsd.seq %u > listener->r_win_base %u\n",
         tsd.get_seg_seq(), listener->r_win_base);
 
     if ( listener->normalizer->handling_timestamps()
@@ -745,7 +703,7 @@ void TcpSession::check_for_session_hijack(TcpSegmentDescriptor& tsd)
 
             if ( t_hijack )
             {
-                if ( p->packet_flags & PKT_FROM_CLIENT )
+                if ( p->is_from_client() )
                     event_code |= EVENT_SESSION_HIJACK_CLIENT;
                 else
                     event_code |= EVENT_SESSION_HIJACK_SERVER;
@@ -753,7 +711,7 @@ void TcpSession::check_for_session_hijack(TcpSegmentDescriptor& tsd)
 
             if ( l_hijack )
             {
-                if ( p->packet_flags & PKT_FROM_CLIENT )
+                if ( p->is_from_client() )
                     event_code |= EVENT_SESSION_HIJACK_SERVER;
                 else
                     event_code |= EVENT_SESSION_HIJACK_CLIENT;
@@ -778,7 +736,7 @@ bool TcpSession::check_for_window_slam(TcpSegmentDescriptor& tsd)
         pkt_action_mask |= ACTION_BAD_PKT;
         return true;
     }
-    else if ((tsd.get_pkt()->packet_flags & PKT_FROM_CLIENT)
+    else if ((tsd.get_pkt()->is_from_client())
         && (tsd.get_seg_wnd() <= SLAM_MAX)
         && (tsd.get_seg_ack() == listener->get_iss() + 1)
         && !( tsd.get_tcph()->is_fin() | tsd.get_tcph()->is_rst() )
@@ -816,7 +774,7 @@ void TcpSession::handle_data_segment(TcpSegmentDescriptor& tsd)
 
     if ( TcpStreamTracker::TCP_CLOSED != talker->get_tcp_state() )
     {
-        // FIXIT - move this to normalizer base class, handle OS_PROXY in derived class
+        // FIXIT-M move this to normalizer base class, handle OS_PROXY in derived class
         if (config->policy != StreamPolicy::OS_PROXY)
         {
             /* check for valid seqeuence/retrans */
@@ -859,12 +817,12 @@ void TcpSession::handle_data_segment(TcpSegmentDescriptor& tsd)
     listener->reassembler->flush_on_data_policy(tsd.get_pkt());
 }
 
-TcpStreamTracker::TcpState TcpSession::get_talker_state(void)
+TcpStreamTracker::TcpState TcpSession::get_talker_state()
 {
     return talker->get_tcp_state();
 }
 
-TcpStreamTracker::TcpState TcpSession::get_listener_state(void)
+TcpStreamTracker::TcpState TcpSession::get_listener_state()
 {
     return listener->get_tcp_state();
 }
@@ -928,14 +886,14 @@ void TcpSession::flush_listener(Packet* p)
 
     /* figure out direction of this packet -- we should've already
      * looked at it, so the packet_flags are already set. */
-    if ( p->packet_flags & PKT_FROM_SERVER )
+    if ( p->is_from_server() )
     {
         DebugMessage(DEBUG_STREAM_STATE, "Flushing listener on packet from server\n");
         listener = client;
         /* dir of flush is the data from the opposite side */
         dir = PKT_FROM_SERVER;
     }
-    else if ( p->packet_flags & PKT_FROM_CLIENT )
+    else if ( p->is_from_client() )
     {
         DebugMessage(DEBUG_STREAM_STATE, "Flushing listener on packet from client\n");
         listener = server;
@@ -960,14 +918,14 @@ void TcpSession::flush_talker(Packet* p)
 
     /* figure out direction of this packet -- we should've already
      * looked at it, so the packet_flags are already set. */
-    if ( p->packet_flags & PKT_FROM_SERVER )
+    if ( p->is_from_server() )
     {
         DebugMessage(DEBUG_STREAM_STATE, "Flushing talker on packet from server\n");
         talker = server;
         /* dir of flush is the data from the opposite side */
         dir = PKT_FROM_CLIENT;
     }
-    else if ( p->packet_flags & PKT_FROM_CLIENT )
+    else if ( p->is_from_client() )
     {
         DebugMessage(DEBUG_STREAM_STATE, "Flushing talker on packet from client\n");
         talker = client;
@@ -1035,18 +993,18 @@ void TcpSession::do_packet_analysis_post_checks(Packet* p)
         DisableInspection();
 
         DebugFormat(DEBUG_STREAM_STATE,
-            "Stream Ignoring packet from %d. Session marked as ignore\n",
-            p->packet_flags & PKT_FROM_SERVER ? "server" : "client");
+            "Stream Ignoring packet from %s. Session marked as ignore\n",
+            p->is_from_server() ? "server" : "client");
     }
 }
 
-// FIXIT - can flow do these checks before calling stream tcp?
+// FIXIT-M can flow do these checks before calling stream tcp?
 bool TcpSession::is_flow_handling_packets(Packet* p)
 {
     bool flow_ready = true;
 
     // FIXIT-L can't get here without protocol being set to TCP, is this really needed??
-    if (flow->protocol != PktType::TCP)
+    if (flow->pkt_type != PktType::TCP)
     {
         DebugMessage(DEBUG_STREAM_STATE, "Lightweight session not TCP on TCP packet\n");
         flow_ready = false;
@@ -1074,20 +1032,12 @@ void TcpSession::cleanup_session_if_expired(Packet* p)
     // the packet...Insert a packet, or handle state change SYN, FIN, RST, etc.
     if (stream.expired_session(flow, p))
     {
-        /* Session is timed out */
+        /* Session is timed out, if also reset then restart, otherwise clear */
         if (flow->get_session_flags() & SSNFLAG_RESET)
-        {
-            /* If this one has been reset, delete the TCP
-             * portion, and start a new. */
-            cleanup_session(1);
-        }
+            clear_session(true, true, true, p);
         else
-        {
-            DebugMessage(DEBUG_STREAM_STATE, "Stream TCP session timedout!\n");
+            clear_session(true, true, false, p);
 
-            /* Not reset, simply time'd out.  Clean it up */
-            cleanup_session(1);
-        }
         tcpStats.timeouts++;
     }
 }
@@ -1097,14 +1047,6 @@ bool TcpSession::do_packet_analysis_pre_checks(Packet* p, TcpSegmentDescriptor& 
     if ( !is_flow_handling_packets(p) )
         return false;
 
-    // FIXIT - need to do something here to handle check for need to swap trackers??
-
-    if (config == nullptr )
-        config = get_tcp_cfg(flow->ssn_server);
-
-    if( !tcp_init )
-        set_os_policy( );
-
     // Check if the session is expired. Should be done before we do something with
     // the packet...Insert a packet, or handle state change SYN, FIN, RST, etc.
     cleanup_session_if_expired(p);
@@ -1112,7 +1054,7 @@ bool TcpSession::do_packet_analysis_pre_checks(Packet* p, TcpSegmentDescriptor& 
     pkt_action_mask = ACTION_NOTHING;
     tel.clear_tcp_events();
     // process thru state machine...talker first
-    if (p->packet_flags & PKT_FROM_CLIENT)
+    if (p->is_from_client())
     {
         update_session_on_client_packet(tsd);
         DEBUG_WRAP(t_name = "Server"; l_name = "Client");
@@ -1152,16 +1094,35 @@ int TcpSession::process(Packet* p)
 {
     Profile profile(s5TcpPerfStats);
 
-    DEBUG_WRAP(
+    DEBUG_WRAP
+    (
         char flagbuf[9];
         CreateTCPFlagString(p->ptrs.tcph, flagbuf);
+
+        char src_addr[INET6_ADDRSTRLEN];
+        char dst_addr[INET6_ADDRSTRLEN];
+
+        sfip_ntop(p->ptrs.ip_api.get_src(), src_addr, sizeof(src_addr));
+        sfip_ntop(p->ptrs.ip_api.get_dst(), dst_addr, sizeof(dst_addr));
+
         DebugFormat((DEBUG_STREAM|DEBUG_STREAM_STATE),
-        "Got TCP Packet 0x%X:%d ->  0x%X:%d %s\nseq: 0x%X   ack:0x%X  dsize: %u\n",
-        p->ptrs.ip_api.get_src(), p->ptrs.sp, p->ptrs.ip_api.get_dst(), p->ptrs.dp, flagbuf,
-        p->ptrs.tcph->seq(), p->ptrs.tcph->ack(), p->dsize);
-        );
+            "Got TCP Packet %s:%hu ->  %s:%hu %s\nseq: 0x%X   ack:0x%X  dsize: %hu\n",
+            src_addr, p->ptrs.sp, dst_addr, p->ptrs.dp, flagbuf,
+            p->ptrs.tcph->seq(), p->ptrs.tcph->ack(), p->dsize);
+    );
+
+    assert(flow->ssn_server);
+
+    // FIXIT-H need to do something here to handle check for need to swap trackers??
+
+    if ( !config )
+        config = get_tcp_cfg(flow->ssn_server);
+
+    if( !tcp_init )
+        set_os_policy( );
 
     TcpSegmentDescriptor tsd(flow, p, tel);
+
     if ( !do_packet_analysis_pre_checks(p, tsd) )
         return ACTION_NOTHING;
 
@@ -1172,7 +1133,7 @@ int TcpSession::process(Packet* p)
     {
         Profile profile(s5TcpStatePerfStats);
 
-        if ( tsm.eval(tsd, *talker, *listener) )
+        if ( tsm->eval(tsd, *talker, *listener) )
         {
             do_packet_analysis_post_checks(p);
             S5TraceTCP(p, flow, &tsd, 0);
@@ -1198,7 +1159,7 @@ int TcpSession::process(Packet* p)
     return ACTION_NOTHING;
 }
 
-void TcpSession::flush(void)
+void TcpSession::flush()
 {
     if ( ( server->reassembler->is_segment_pending_flush() ) ||
         (client->reassembler->is_segment_pending_flush() ) )

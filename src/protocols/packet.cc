@@ -22,46 +22,62 @@
 #include "protocols/packet.h"
 #include "protocols/packet_manager.h"
 #include "protocols/protocol_ids.h"
+#include "log/obfuscator.h"
+#include "log/messages.h"
+#include "managers/codec_manager.h"
+#include "utils/util.h"
 
-#if 0
-uint8_t Packet::ip_proto_next() const
+Packet::Packet(bool packet_data)
 {
-    if (is_ip4())
+    layers = new Layer[CodecManager::get_max_layers()];
+    allocated = packet_data;
+
+    if (!packet_data)
     {
-        return ptrs.ip_api.get_ip4h()->proto();
+        pkt = nullptr;
+        pkth = nullptr;
     }
-    else if (is_ip6())
+    else
     {
-        const ip::IP6Hdr* const ip6h = ptrs.ip_api.get_ip6h();
-        int lyr = num_layers-1;
-
-        for (; lyr >= 0; lyr--)
-            if (layers[lyr].start == (const uint8_t*)(ip6h))
-                break;
-
-#if 0
-        Since this packet 'is_ip6()', we ar gauranteed to find the layer
-        if (lyr < 0)
-            return IPPROTO_ID_RESERVED;
-#endif
-
-        while (lyr < num_layers)
-        {
-            const uint16_t prot = layers[lyr].prot_id;
-
-            if (!is_ip_protocol(prot))
-                return (uint8_t)prot;
-
-            ++lyr;
-        }
+        uint8_t* b = new uint8_t[sizeof(*pkth) + Codec::PKT_MAX + SPARC_TWIDDLE];
+        pkth = (DAQ_PktHdr_t*)b;
+        b += sizeof(*pkth);
+        b += SPARC_TWIDDLE;
+        pkt = b;
     }
 
-    return IPPROTO_ID_RESERVED;
+    obfuscator = nullptr;
+
+    reset();
 }
 
-#endif
+Packet::~Packet()
+{
+    if (allocated)
+        delete[] (uint8_t*)pkth;
+    delete[] layers;
+}
 
-bool Packet::get_ip_proto_next(uint8_t& lyr, uint8_t& proto) const
+void Packet::reset()
+{
+    if (obfuscator)
+        delete obfuscator;
+
+    flow = nullptr;
+    endianness = nullptr;
+    obfuscator = nullptr;
+    packet_flags = 0;
+    xtradata_mask = 0;
+    proto_bits = 0;
+    alt_dsize = 0;
+    num_layers = 0;
+    ip_proto_next = IpProtocol::PROTO_NOT_SET;
+    disable_inspect = false;
+
+    ptrs.reset();
+}
+
+bool Packet::get_ip_proto_next(uint8_t& lyr, IpProtocol& proto) const
 {
     if (lyr > num_layers)
         return false;
@@ -70,22 +86,22 @@ bool Packet::get_ip_proto_next(uint8_t& lyr, uint8_t& proto) const
     {
         switch (layers[lyr].prot_id)
         {
-        case IPPROTO_ID_IPV6:
-        case ETHERTYPE_IPV6:
+        case ProtocolId::IPV6:
+        case ProtocolId::ETHERTYPE_IPV6:
             // move past this IP layer and any IPv6 extensions.
             while ( ((lyr + 1) < num_layers) && is_ip6_extension(layers[lyr+1].prot_id) )
                 ++lyr;
 
-            if ( (layers[lyr].prot_id == IPPROTO_ID_IPV6) || (layers[lyr].prot_id ==
-                ETHERTYPE_IPV6) )
+            if ( (layers[lyr].prot_id == ProtocolId::IPV6) || (layers[lyr].prot_id ==
+                ProtocolId::ETHERTYPE_IPV6) )
                 proto =  reinterpret_cast<const ip::IP6Hdr*>(layers[lyr++].start)->next();
             else
                 proto =  reinterpret_cast<const ip::IP6Extension*>(layers[lyr++].start)->ip6e_nxt;
 
             return true;
 
-        case ETHERTYPE_IPV4:
-        case IPPROTO_ID_IPIP:
+        case ProtocolId::ETHERTYPE_IPV4:
+        case ProtocolId::IPIP:
             proto = reinterpret_cast<const ip::IP4Hdr*>(layers[lyr++].start)->proto();
             return true;
 
@@ -182,3 +198,4 @@ const char* Packet::get_pseudo_type() const
     }
     return "other";
 }
+

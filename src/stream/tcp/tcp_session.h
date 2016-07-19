@@ -35,9 +35,6 @@
 
 class TcpEventLogger;
 
-// FIXIT-L session tracking must be split from reassembly
-// into a separate module a la ip_session.cc and ip_defrag.cc
-// (of course defrag should also be cleaned up)
 class TcpSession : public TcpStreamSession
 {
 public:
@@ -48,20 +45,20 @@ public:
     void restart(Packet* p) override;
     int process(Packet*) override;
 
-    void flush(void) override;
+    void flush() override;
     void flush_client(Packet*) override;
     void flush_server(Packet*) override;
     void flush_talker(Packet*) override;
     void flush_listener(Packet*) override;
 
+    virtual void clear_session(bool free_flow_data, bool flush_segments, bool restart, Packet* p = nullptr) override;
+
     void set_extra_data(Packet*, uint32_t /*flag*/) override;
     void clear_extra_data(Packet*, uint32_t /*flag*/) override;
 
-    void cleanup_session(int freeApplicationData, Packet* = nullptr) override;
-
-    void update_perf_base_state(char newState) override;
-    TcpStreamTracker::TcpState get_talker_state(void) override;
-    TcpStreamTracker::TcpState get_listener_state(void) override;
+    void update_perf_base_state(char new_state) override;
+    TcpStreamTracker::TcpState get_talker_state() override;
+    TcpStreamTracker::TcpState get_listener_state() override;
     void update_timestamp_tracking(TcpSegmentDescriptor&) override;
     void update_session_on_rst(TcpSegmentDescriptor&, bool) override;
     bool handle_syn_on_reset_session(TcpSegmentDescriptor&) override;
@@ -77,27 +74,23 @@ public:
     bool validate_packet_established_session(TcpSegmentDescriptor&) override;
 
 private:
+    void set_os_policy() override;
     bool flow_exceeds_config_thresholds(TcpSegmentDescriptor&);
     void process_tcp_stream(TcpSegmentDescriptor&);
     int process_tcp_data(TcpSegmentDescriptor&);
     void process_tcp_packet(TcpSegmentDescriptor&);
-    void FinishServerInit(TcpSegmentDescriptor&);
     void swap_trackers();
-
     void NewTcpSessionOnSyn(TcpSegmentDescriptor&);
     void NewTcpSessionOnSynAck(TcpSegmentDescriptor&);
-    void set_os_policy() override;
-
-    void clear_session(int freeApplicationData) override;
-
     int process_dis(Packet*);
     void update_on_3whs_complete(TcpSegmentDescriptor&);
-    bool is_flow_handling_packets(Packet* p);
-    void cleanup_session_if_expired(Packet* p);
-    bool do_packet_analysis_pre_checks(Packet* p, TcpSegmentDescriptor& tsd);
-    void do_packet_analysis_post_checks(Packet* p);
+    bool is_flow_handling_packets(Packet*);
+    void cleanup_session_if_expired(Packet*);
+    bool do_packet_analysis_pre_checks(Packet*, TcpSegmentDescriptor&);
+    void do_packet_analysis_post_checks(Packet*);
 
-    TcpStateMachine tsm;
+
+    TcpStateMachine* tsm;
 };
 
 #endif

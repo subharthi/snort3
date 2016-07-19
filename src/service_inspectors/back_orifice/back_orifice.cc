@@ -226,7 +226,7 @@ ProfileStats* BoModule::get_profile() const
  *
  * Returns: key to XOR with current char to be "encrypted"
  */
-static char BoRand(void)
+static char BoRand()
 {
     holdrand = holdrand * 214013L + 2531011L;
     return (char)(((holdrand  >> 16) & 0x7fff) & 0xFF);
@@ -237,7 +237,7 @@ static char BoRand(void)
  * to recover the key.  Using this in the bo_eval() function below is much
  * faster than the old brute force method
  */
-static void PrecalcPrefix(void)
+static void PrecalcPrefix()
 {
     uint8_t cookie_cyphertext[BO_MAGIC_SIZE];
     const char* cookie_plaintext = "*!*QWTY?";
@@ -361,8 +361,8 @@ static int BoGetDirection(Packet* p, const char* pkt_data)
         pkt_data++;
     }
 
-    DebugFormat(DEBUG_INSPECTOR, "Data length = %lu\n", len);
-    DebugFormat(DEBUG_INSPECTOR, "ID = %lu\n", id);
+    DebugFormat(DEBUG_INSPECTOR, "Data length = %u\n", len);
+    DebugFormat(DEBUG_INSPECTOR, "ID = %u\n", id);
 
     /* Do more len checking */
 

@@ -6,6 +6,7 @@ x_includedir = $(pkgincludedir)/utils
 x_include_HEADERS = \
 bitop.h \
 dnet_header.h \
+safec.h \
 segment_mem.h \
 sflsq.h \
 sfmemcap.h \
@@ -23,18 +24,9 @@ sfmemcap.cc \
 sfsnprintfappend.cc sfsnprintfappend.h \
 snort_bounds.h \
 stats.cc \
-strvec.cc strvec.h \
 util.cc \
 util_jsnorm.cc util_jsnorm.h \
-util_math.cc util_math.h \
 util_net.cc util_net.h \
 util_unfold.cc util_unfold.h \
-util_utf.cc util_utf.h \
-xmalloc.cc xmalloc.h
-
-libutil_a_CXXFLAGS = $(AM_CXXFLAGS) -fvisibility=default
-
-if BUILD_CPPUTESTS
-SUBDIRS = test
-endif
+util_utf.cc util_utf.h
 

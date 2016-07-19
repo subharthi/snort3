@@ -1,5 +1,6 @@
 
 add_library(preprocessor_states
+    pps_appid.cc
     pps_arpspoof.cc
     pps_bo.cc
     pps_dcerpc.cc
@@ -13,6 +14,8 @@ add_library(preprocessor_states
     pps_gtp.cc
     pps_http_inspect.cc
     pps_http_inspect_server.cc
+    pps_nhttp_inspect.cc
+    pps_nhttp_inspect_server.cc
     pps_normalizers.cc
     pps_perfmonitor.cc
     pps_reputation.cc

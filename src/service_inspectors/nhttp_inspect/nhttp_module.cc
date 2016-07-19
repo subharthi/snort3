@@ -45,7 +45,13 @@ const Parameter NHttpModule::nhttp_params[] =
     { "utf8_bare_byte", Parameter::PT_BOOL, nullptr, "false",
           "when doing UTF-8 character normalization include bytes that were not percent encoded" },
     { "iis_unicode", Parameter::PT_BOOL, nullptr, "false",
-          "use IIS unicode codepoint mapping to normalize characters" },
+          "use IIS unicode code point mapping to normalize characters" },
+    { "iis_unicode_map_file", Parameter::PT_STRING, "(optional)", nullptr,
+          "file containing code points for IIS unicode." },
+    { "iis_unicode_code_page", Parameter::PT_INT, "0:65535", "1252",
+          "code page to use from the IIS unicode map file" },
+    { "iis_double_decode", Parameter::PT_BOOL, nullptr, "false",
+          "perform double decoding of percent encodings to normalize characters" },
     { "backslash_to_slash", Parameter::PT_BOOL, nullptr, "false",
           "replace \\ with / when normalizing URIs" },
     { "plus_to_space", Parameter::PT_BOOL, nullptr, "true",
@@ -59,9 +65,12 @@ const Parameter NHttpModule::nhttp_params[] =
           "number of characters to print from a Field" },
     { "print_hex", Parameter::PT_BOOL, nullptr, "false",
       "nonprinting characters printed in [HH] format instead of using an asterisk" },
+    { "show_pegs", Parameter::PT_BOOL, nullptr, "true", "display peg counts with test output" },
 #endif
     { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
 };
+
+THREAD_LOCAL PegCount NHttpModule::peg_counts[PEG_COUNT_MAX] = { 0 };
 
 bool NHttpModule::begin(const char*, int, SnortConfig*)
 {
@@ -111,11 +120,18 @@ bool NHttpModule::set(const char*, Value& val, SnortConfig*)
     else if (val.is("iis_unicode"))
     {
         params->uri_param.iis_unicode = val.get_bool();
-        if (params->uri_param.iis_unicode)
-        {
-            params->uri_param.unicode_map = new uint8_t[65536];
-            UriNormalizer::load_default_unicode_map(params->uri_param.unicode_map);
-        }
+    }
+    else if (val.is("iis_unicode_map_file"))
+    {
+        params->uri_param.iis_unicode_map_file = val.get_string();
+    }
+    else if (val.is("iis_unicode_code_page"))
+    {
+        params->uri_param.iis_unicode_code_page = val.get_long();
+    }
+    else if (val.is("iis_double_decode"))
+    {
+        params->uri_param.iis_double_decode = val.get_bool();
     }
     else if (val.is("backslash_to_slash"))
     {
@@ -150,6 +166,10 @@ bool NHttpModule::set(const char*, Value& val, SnortConfig*)
     {
         params->print_hex = val.get_bool();
     }
+    else if (val.is("show_pegs"))
+    {
+        params->show_pegs = val.get_bool();
+    }
 #endif
     else
     {
@@ -164,6 +184,16 @@ bool NHttpModule::end(const char*, int, SnortConfig*)
     {
         ParseWarning(WARN_CONF, "Meaningless to do bare byte when not doing UTF-8");
         params->uri_param.utf8_bare_byte = false;
+    }
+    if (params->uri_param.iis_unicode)
+    {
+        params->uri_param.unicode_map = new uint8_t[65536];
+        if (params->uri_param.iis_unicode_map_file.length() == 0)
+            UriNormalizer::load_default_unicode_map(params->uri_param.unicode_map);
+        else
+            UriNormalizer::load_unicode_map(params->uri_param.unicode_map,
+                params->uri_param.iis_unicode_map_file.c_str(),
+                params->uri_param.iis_unicode_code_page);
     }
     return true;
 }

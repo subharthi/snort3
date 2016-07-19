@@ -25,6 +25,7 @@
 #include <sys/types.h>
 
 #include "framework/module.h"
+#include "framework/counts.h"
 
 #include "nhttp_enum.h"
 #include "nhttp_str_to_code.h"
@@ -309,7 +310,7 @@ const RuleMap NHttpModule::nhttp_events[] =
     { EVENT_PDF_UNSUP_COMP_TYPE,        "PDF file unsupported compression type" },
     { EVENT_PDF_CASC_COMP,              "PDF file cascaded compression" },
     { EVENT_PDF_PARSE_FAILURE,          "PDF file parse failure" },
-    { EVENT_LOSS_OF_SYNC,               "HTTP misformatted or not really HTTP" },
+    { EVENT_LOSS_OF_SYNC,               "Not HTTP traffic" },
     { EVENT_CHUNK_ZEROS,                "Chunk length has excessive leading zeros" },
     { EVENT_WS_BETWEEN_MSGS,            "White space before or between messages" },
     { EVENT_URI_MISSING,                "Request message without URI" },
@@ -327,7 +328,38 @@ const RuleMap NHttpModule::nhttp_events[] =
     { EVENT_GZIP_FAILURE,               "Gzip decompression failed" },
     { EVENT_ZERO_NINE_CONTINUE,         "HTTP 0.9 requested followed by another request" },
     { EVENT_ZERO_NINE_NOT_FIRST,        "HTTP 0.9 request following a normal request" },
+    { EVENT_BOTH_CL_AND_TE,             "Message has both Content-Length and Transfer-Encoding" },
+    { EVENT_BAD_CODE_BODY_HEADER,       "Status code implying no body combined with Transfer-"
+                                            "Encoding or nonzero Content-Length" },
+    { EVENT_FINAL_NOT_CHUNKED,          "Transfer-Encoding did not end with chunked" },
+    { EVENT_CHUNKED_BEFORE_END,         "Transfer-Encoding with chunked not at end" },
+    { EVENT_MISFORMATTED_HTTP,          "Misformatted HTTP traffic" },
     { 0, nullptr }
+};
+
+const PegInfo NHttpModule::peg_names[PEG_COUNT_MAX+1] =
+{
+    { "flows", "HTTP connections inspected" },
+    { "scans", "TCP segments scanned looking for HTTP messages" },
+    { "reassembles", "TCP segments combined into HTTP messages" },
+    { "inspections", "total message sections inspected" },
+    { "requests", "HTTP request messages inspected" },
+    { "responses", "HTTP response messages inspected" },
+    { "GET requests", "GET requests inspected" },
+    { "HEAD requests", "HEAD requests inspected" },
+    { "POST requests", "POST requests inspected" },
+    { "PUT requests", "PUT requests inspected" },
+    { "DELETE requests", "DELETE requests inspected" },
+    { "CONNECT requests", "CONNECT requests inspected" },
+    { "OPTIONS requests", "OPTIONS requests inspected" },
+    { "TRACE requests", "TRACE requests inspected" },
+    { "other requests", "other request methods inspected" },
+    { "request bodies", "POST, PUT, and other requests with message bodies" },
+    { "chunked", "chunked message bodies" },
+    { "URI normalizations", "URIs needing to be normalization" },
+    { "URI path", "URIs with path problems" },
+    { "URI coding", "URIs with character coding problems" },
+    { nullptr, nullptr }
 };
 
 const int8_t NHttpEnums::as_hex[256] =

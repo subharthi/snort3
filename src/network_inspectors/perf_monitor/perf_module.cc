@@ -46,9 +46,6 @@ static const Parameter s_params[] =
 
     { "cpu", Parameter::PT_BOOL, "nullptr", "false",
       "enable cpu statistics" },
-    
-    { "events", Parameter::PT_BOOL, nullptr, "false",
-      "report on qualified vs non-qualified events" },
 
     { "flow", Parameter::PT_BOOL, nullptr, "false",
       "enable traffic statistics" },
@@ -68,7 +65,7 @@ static const Parameter s_params[] =
     { "max_file_size", Parameter::PT_INT, "4096:", "1073741824",
       "files will be rolled over if they exceed this size" },
 
-    { "flow_ports", Parameter::PT_INT, "0:", "1023",
+    { "flow_ports", Parameter::PT_INT, "0:65535", "1023",
       "maximum ports to track" },
 
     { "output", Parameter::PT_ENUM, "file | console", "file",
@@ -111,11 +108,6 @@ bool PerfMonModule::set(const char*, Value& v, SnortConfig*)
     {
         if ( v.get_bool() )
             config.perf_flags |= PERF_CPU;
-    }
-    else if ( v.is("events") )
-    {
-        if ( v.get_bool() )
-            config.perf_flags |= PERF_EVENT;
     }
     else if ( v.is("flow") )
     {
@@ -192,7 +184,7 @@ bool PerfMonModule::begin(const char* fqn, int, SnortConfig*)
     return true;
 }
 
-static bool add_module(PerfConfig& config, Module *mod, std::string pegs)
+static bool add_module(PerfConfig& config, Module *mod, std::string& pegs)
 {
     const PegInfo* peg_info;
     std::string tok;
@@ -236,9 +228,11 @@ bool PerfMonModule::end(const char* fqn, int idx, SnortConfig*)
         if ( !config.modules.size() )
         {
             auto modules = ModuleManager::get_all_modules();
+            std::string empty;
+
             for ( auto& mod : modules )
             {
-                if ( !add_module(config, mod, std::string()) )
+                if ( !add_module(config, mod, empty) )
                     return false;
             }
         }
@@ -254,7 +248,6 @@ bool PerfMonModule::end(const char* fqn, int idx, SnortConfig*)
 void PerfMonModule::get_config(PerfConfig& cfg)
 {
     cfg = config;
-    memset(&config, 0, sizeof(config));
 }
 
 const PegInfo* PerfMonModule::get_pegs() const

@@ -87,12 +87,13 @@
 #include "protocols/layer.h"
 #include "protocols/ipv4_options.h"
 #include "protocols/packet_manager.h"
+#include "main/snort.h"
 #include "main/snort_debug.h"
 #include "profiler/profiler.h"
 #include "time/timersub.h"
 #include "utils/stats.h"
-#include "utils/snort_bounds.h"
 #include "detection/detect.h"
+#include "utils/safec.h"
 
 /*  D E F I N E S  **************************************************/
 
@@ -103,9 +104,6 @@
 #define FRAG_BAD            0x00000008
 #define FRAG_NO_BSD_VULN    0x00000010
 #define FRAG_DROP_FRAGMENTS 0x00000020
-
-/* default 4MB memcap */
-#define FRAG_MEMCAP   4194304
 
 /* return values for CheckTimeout() */
 #define FRAG_TIME_OK            0
@@ -499,8 +497,8 @@ static inline int FragCheckFirstLast(const Packet* const p,
         {
             ft->calculated_size = endOfThisFrag;
 
-            DebugFormat(DEBUG_FRAG, "Got last frag, Bytes: %d, "
-                "Calculated size: %d\n",
+            DebugFormat(DEBUG_FRAG, "Got last frag, Bytes: %u, "
+                "Calculated size: %u\n",
                 ft->frag_bytes,
                 ft->calculated_size);
         }
@@ -554,7 +552,7 @@ static int FragHandleIPOptions(FragTracker* ft,
             else
             {
                 /* Allocate and copy in the options */
-                ft->ip_options_data = (uint8_t*)SnortAlloc(ip_options_len);
+                ft->ip_options_data = (uint8_t*)snort_calloc(ip_options_len);
                 memcpy(ft->ip_options_data, p->ptrs.ip_api.get_ip_opt_data(), ip_options_len);
                 ft->ip_options_len = ip_options_len;
             }
@@ -620,7 +618,7 @@ static inline int checkTinyFragments(
             if (p->dsize <= engine->min_fragment_length)
             {
                 DebugFormat(DEBUG_FRAG,
-                    "Frag: Received fragment size(%d) is not more than configured min_fragment_length (%d)\n",
+                    "Frag: Received fragment size(%d) is not more than configured min_fragment_length (%u)\n",
                     p->dsize, engine->min_fragment_length);
                 EventTinyFragments(engine);
                 return 1;
@@ -630,7 +628,7 @@ static inline int checkTinyFragments(
             if (trimmedLength <= engine->min_fragment_length)
             {
                 DebugFormat(DEBUG_FRAG,
-                    "Frag: # of New octets in Received fragment(%d) is not more than configured min_fragment_length (%d)\n",
+                    "Frag: # of New octets in Received fragment(%u) is not more than configured min_fragment_length (%u)\n",
                     trimmedLength, engine->min_fragment_length);
                 EventTinyFragments(engine);
                 return 1;
@@ -645,7 +643,7 @@ int drop_all_fragments(
     Packet* p
     )
 {
-    if ( !p->flow || p->flow->protocol != PktType::IP )
+    if ( !p->flow || p->flow->pkt_type != PktType::IP )
         return -1;
 
     FragTracker* ft = &((IpSession*)p->flow->session)->tracker;
@@ -709,7 +707,7 @@ static inline int FragIsComplete(FragTracker* ft)
         }
 
         DebugFormat(DEBUG_FRAG,
-            "   Calc size (%d) != frag bytes (%d)\n",
+            "   Calc size (%u) != frag bytes (%u)\n",
             ft->calculated_size, ft->frag_bytes);
 
         /*
@@ -739,16 +737,15 @@ static void FragRebuild(FragTracker* ft, Packet* p)
     Profile profile(fragRebuildPerfStats);
 
     static THREAD_LOCAL uint8_t encap_frag_cnt = 0;
+    size_t offset = 0;
     uint8_t* rebuild_ptr = NULL;  /* ptr to the start of the reassembly buffer */
-    const uint8_t* rebuild_end;  /* ptr to the end of the reassembly buffer */
     Fragment* frag;    /* frag pointer for managing fragments */
-    int ret = 0;
     Packet* dpkt;
 
 // XXX NOT YET IMPLEMENTED - debugging
 
     if (!defrag_pkts[encap_frag_cnt])
-        defrag_pkts[encap_frag_cnt] = PacketManager::encode_new();
+        defrag_pkts[encap_frag_cnt] = new Packet();
 
     dpkt = defrag_pkts[encap_frag_cnt];
 
@@ -758,7 +755,6 @@ static void FragRebuild(FragTracker* ft, Packet* p)
      */
     rebuild_ptr = (uint8_t*)dpkt->data;
     // the encoder ensures enough space for a maximum datagram
-    rebuild_end = (uint8_t*)dpkt->data + IP_MAXPACKET;
 
     if (p->ptrs.ip_api.is_ip4())
     {
@@ -778,16 +774,9 @@ static void FragRebuild(FragTracker* ft, Packet* p)
                 new_ip_hlen);
             iph->set_hlen(new_ip_hlen >> 2);
 
-            ret = SafeMemcpy(rebuild_ptr, ft->ip_options_data,
-                ft->ip_options_len, rebuild_ptr, rebuild_end);
-
-            if (ret == SAFEMEM_ERROR)
-            {
-                /*XXX: Log message, failed to copy */
-                ft->frag_flags = ft->frag_flags | FRAG_REBUILT;
-                return;
-            }
+            memcpy_s(rebuild_ptr, IP_MAXPACKET, ft->ip_options_data, ft->ip_options_len);
             rebuild_ptr += ft->ip_options_len;
+            offset += ft->ip_options_len;
         }
         else if (ft->copied_ip_options_len)
         {
@@ -818,8 +807,8 @@ static void FragRebuild(FragTracker* ft, Packet* p)
             "   frag->size: %d\n"
             "   frag->prev: %p\n"
             "   frag->next: %p\n",
-            frag, frag->data, frag->offset,
-            frag->size, frag->prev, frag->next);
+            (void*) frag, frag->data, frag->offset,
+            frag->size, (void*) frag->prev, (void*) frag->next);
 
         /*
          * We somehow got a frag that had data beyond the calculated
@@ -833,15 +822,14 @@ static void FragRebuild(FragTracker* ft, Packet* p)
          */
         if (frag->size)
         {
-            ret = SafeMemcpy(rebuild_ptr+frag->offset, frag->data, frag->size,
-                rebuild_ptr, rebuild_end);
-
-            if (ret == SAFEMEM_ERROR)
+            if (frag->size > IP_MAXPACKET - frag->offset - offset)
             {
-                /*XXX: Log message, failed to copy */
                 ft->frag_flags = ft->frag_flags | FRAG_REBUILT;
                 return;
             }
+
+            memcpy_s(rebuild_ptr + frag->offset,
+                IP_MAXPACKET - frag->offset - offset, frag->data, frag->size);
         }
     }
 
@@ -867,18 +855,18 @@ static void FragRebuild(FragTracker* ft, Packet* p)
 
         const Layer& lyr = dpkt->layers[dpkt->num_layers-1];
 
-        if ((lyr.prot_id == ETHERTYPE_IPV6) || (lyr.prot_id == IPPROTO_ID_IPV6))
+        if ((lyr.prot_id == ProtocolId::ETHERTYPE_IPV6) || (lyr.prot_id == ProtocolId::IPV6))
         {
             ip::IP6Hdr* const rawHdr =
                 const_cast<ip::IP6Hdr*>(dpkt->ptrs.ip_api.get_ip6h());
-            rawHdr->ip6_next = ft->protocol;
+            rawHdr->ip6_next = ft->ip_proto;
         }
         else
         {
             ip::IP6Extension* const ip6_ext = const_cast<ip::IP6Extension*>(
                 reinterpret_cast<const ip::IP6Extension*>(lyr.start));
 
-            ip6_ext->ip6e_nxt = ft->protocol;
+            ip6_ext->ip6e_nxt = ft->ip_proto;
         }
 
         dpkt->dsize = (uint16_t)ft->calculated_size;
@@ -966,10 +954,10 @@ static void delete_frag(Fragment* frag)
     /*
      * delete the fragment either in prealloc or dynamic mode
      */
-    free(frag->fptr);
+    snort_free(frag->fptr);
     mem_in_use -= frag->flen;
 
-    free(frag);
+    snort_free(frag);
     mem_in_use -= sizeof(Fragment);
 
     ip_stats.mem_in_use = mem_in_use;
@@ -987,7 +975,7 @@ static void delete_frag(Fragment* frag)
 static inline void delete_node(FragTracker* ft, Fragment* node)
 {
     DebugFormat(DEBUG_FRAG, "Deleting list node %p (p %p n %p)\n",
-        node, node->prev, node->next);
+        (void*) node, (void*) node->prev, (void*) node->next);
 
     if (node->prev)
     {
@@ -1039,7 +1027,7 @@ static void delete_tracker(FragTracker* ft)
     ft->fraglist = NULL;
     if (ft->ip_options_data)
     {
-        free(ft->ip_options_data);
+        snort_free(ft->ip_options_data);
         ft->ip_options_data = NULL;
     }
 
@@ -1062,8 +1050,7 @@ Defrag::Defrag(FragEngine& e) : engine(e), layers(DEFAULT_LAYERMAX) { }
 
 bool Defrag::configure(SnortConfig* sc)
 {
-    // FIXIT-L kinda squiffy ... set for each instance
-    // (but to same value) ... move to tinit() ?
+    // FIXIT-L kinda squiffy ... set for each instance (but to same value) ... move to tinit() ?
     layers = sc->get_num_layers();
     return true;
 }
@@ -1075,8 +1062,8 @@ void Defrag::tinit()
     for (int i = 1; i < layers; i++)
         defrag_pkts[i] = nullptr;
 
-    defrag_pkts[0] = PacketManager::encode_new();
-    pkt_snaplen = DAQ_GetSnapLen();
+    defrag_pkts[0] = new Packet();
+    pkt_snaplen = SFDAQ::get_snap_len();
 }
 
 void Defrag::tterm()
@@ -1085,7 +1072,7 @@ void Defrag::tterm()
     {
         if (defrag_pkts[i] != nullptr)
         {
-            PacketManager::encode_delete(defrag_pkts[i]);
+            delete defrag_pkts[i];
             defrag_pkts[i] = nullptr;
         }
     }
@@ -1136,9 +1123,9 @@ void Defrag::process(Packet* p, FragTracker* ft)
      *    Disable Inspection since we'll look at the payload in
      *    a rebuilt packet later.  So don't process it further.
      */
-    //  FIXIT-M  Since we no longer let UDP through, does this detection still work?
+    //  FIXIT-M since we no longer let UDP through, does this detection still work?
     if ((frag_offset != 0)) /* ||
-        ((p->get_ip_proto_next() != IPPROTO_UDP) && (p->ptrs.decode_flags & DECODE_MF))) */
+        ((p->get_ip_proto_next() != IpProtocol::UDP) && (p->ptrs.decode_flags & DECODE_MF))) */
     {
         DisableDetect();
     }
@@ -1153,7 +1140,7 @@ void Defrag::process(Packet* p, FragTracker* ft)
         {
             DebugFormat(DEBUG_FRAG,
                 "[FRAG] Fragment discarded due to low TTL "
-                "[0x%X->0x%X], TTL: %d  " "Offset: %d Length: %d\n",
+                "[0x%X->0x%X], TTL: %d  " "Offset: %d Length: %hu\n",
                 ntohl(p->ptrs.ip_api.get_ip4h()->get_src()),
                 ntohl(p->ptrs.ip_api.get_ip4h()->get_dst()),
                 p->ptrs.ip_api.ttl(), frag_offset,
@@ -1217,7 +1204,7 @@ void Defrag::process(Packet* p, FragTracker* ft)
         {
         case FRAG_INSERT_FAILED:
             DebugFormat(DEBUG_FRAG, "WARNING: Insert into Fraglist failed, "
-                "(offset: %u).\n", frag_offset);
+                "(offset: %hu).\n", frag_offset);
             return;
 
         case FRAG_INSERT_TTL:
@@ -1228,7 +1215,7 @@ void Defrag::process(Packet* p, FragTracker* ft)
                 DebugFormat(DEBUG_FRAG,
                     "[FRAG] Fragment discarded due to large TTL Delta "
                     "[0x%X->0x%X], TTL: %d  orig TTL: %d "
-                    "Offset: %d Length: %d\n",
+                    "Offset: %hu Length: %hu\n",
                     ntohl(p->ptrs.ip_api.get_ip4h()->get_src()),
                     ntohl(p->ptrs.ip_api.get_ip4h()->get_dst()),
                     p->ptrs.ip_api.ttl(), ft->ttl, frag_offset,
@@ -1245,13 +1232,13 @@ void Defrag::process(Packet* p, FragTracker* ft)
 
         case FRAG_INSERT_TIMEOUT:
             DebugFormat(DEBUG_FRAG, "WARNING: Insert into Fraglist failed due to timeout, "
-                "(offset: %u).\n", frag_offset);
+                "(offset: %hu).\n", frag_offset);
             return;
 
         case FRAG_INSERT_OVERLAP_LIMIT:
             DebugFormat(DEBUG_FRAG,
                 "WARNING: Excessive IP fragment overlap, "
-                "(More: %u, offset: %u, offsetSize: %u).\n",
+                "(More: %d, offset: %d, offsetSize: %hu).\n",
                 (p->ptrs.decode_flags & DECODE_MF),
                 (frag_offset << 3), p->dsize);
             ip_stats.discards++;
@@ -1279,7 +1266,7 @@ void Defrag::process(Packet* p, FragTracker* ft)
             FragRebuild(ft, p);
 
             if (frag_offset != 0 ||
-                (p->get_ip_proto_next() != IPPROTO_UDP && ft->frag_flags & FRAG_REBUILT))
+                (p->get_ip_proto_next() != IpProtocol::UDP && ft->frag_flags & FRAG_REBUILT))
             {
                 // Need to reset some things here because the rebuilt packet
                 // will have reset the do_detect flag when it hits Inspect.
@@ -1345,9 +1332,9 @@ int Defrag::insert(Packet* p, FragTracker* ft, FragEngine* fe)
     if (p->is_ip6() && (net_frag_offset == 0))
     {
         const ip::IP6Frag* const fragHdr = layer::get_inner_ip6_frag();
-        if (ft->protocol != fragHdr->ip6f_nxt)
+        if (ft->ip_proto != fragHdr->ip6f_nxt)
         {
-            ft->protocol = fragHdr->ip6f_nxt;
+            ft->ip_proto = fragHdr->ip6f_nxt;
         }
     }
 
@@ -1487,8 +1474,8 @@ int Defrag::insert(Packet* p, FragTracker* ft, FragEngine* fe)
 
         DebugFormat(DEBUG_FRAG,
             "%d right o %d s %d ptr %p prv %p nxt %p\n",
-            i, right->offset, right->size, right,
-            right->prev, right->next);
+            i, right->offset, right->size, (void*) right,
+            (void*) right->prev, (void*) right->next);
 
         if (right->offset >= frag_offset)
         {
@@ -1616,7 +1603,7 @@ int Defrag::insert(Packet* p, FragTracker* ft, FragEngine* fe)
                      * offset by + (frag_offset + len) and
                      * size by - (frag_offset + len - left->offset).
                      */
-                    ret = dup_frag_node(p, ft, left, &right);
+                    ret = dup_frag_node(ft, left, &right);
                     if (ret != FRAG_INSERT_OK)
                     {
                         /* Some warning here,
@@ -1914,7 +1901,7 @@ left_overlap_last:
                      */
                     checkTinyFragments(fe, p, len-slide-trunc);
 
-                    ret = add_frag_node(ft, p, fe, fragStart, fragLength, 0, len,
+                    ret = add_frag_node(ft, fe, fragStart, fragLength, 0, len,
                         slide, trunc, frag_offset, left, &newfrag);
                     if (ret != FRAG_INSERT_OK)
                     {
@@ -2012,7 +1999,7 @@ right_overlap_last:
 
     if (addthis)
     {
-        ret = add_frag_node(ft, p, fe, fragStart, fragLength, lastfrag, len,
+        ret = add_frag_node(ft, fe, fragStart, fragLength, lastfrag, len,
             slide, trunc, frag_offset, left, &newfrag);
     }
     else
@@ -2068,7 +2055,7 @@ int Defrag::new_tracker(Packet* p, FragTracker* ft)
     if ( p->is_ip4() )
     {
         const ip::IP4Hdr* const ip4h = p->ptrs.ip_api.get_ip4h();
-        ft->protocol = ip4h->proto();
+        ft->ip_proto = ip4h->proto();
         frag_off = ip4h->off();
     }
     else /* IPv6 */
@@ -2078,7 +2065,7 @@ int Defrag::new_tracker(Packet* p, FragTracker* ft)
         frag_off = fragHdr->off();
 
         if (frag_off == 0)
-            ft->protocol = fragHdr->ip6f_nxt;
+            ft->ip_proto = fragHdr->ip6f_nxt;
     }
 
     ft->ttl = p->ptrs.ip_api.ttl(); /* store the first ttl we got */
@@ -2101,15 +2088,10 @@ int Defrag::new_tracker(Packet* p, FragTracker* ft)
      * get our first fragment storage struct
      */
     {
-        if (mem_in_use > FRAG_MEMCAP)
-        {
-            flow_con->prune_flows(PktType::IP, p);
-        }
-
-        f = (Fragment*)SnortAlloc(sizeof(Fragment));
+        f = (Fragment*)snort_calloc(sizeof(Fragment));
         mem_in_use += sizeof(Fragment);
 
-        f->fptr = (uint8_t*)SnortAlloc(fragLength);
+        f->fptr = (uint8_t*)snort_calloc(fragLength);
         mem_in_use += fragLength;
 
         ip_stats.mem_in_use = mem_in_use;
@@ -2194,8 +2176,8 @@ int Defrag::new_tracker(Packet* p, FragTracker* ft)
  * @retval FRAG_INSERT_FAILED Memory problem, insertion failed
  * @retval FRAG_INSERT_OK All okay
  */
-int Defrag::add_frag_node(FragTracker* ft,
-    Packet* p,
+int Defrag::add_frag_node(
+    FragTracker* ft,
     FragEngine*,
     const uint8_t* fragStart,
     int16_t fragLength,
@@ -2228,10 +2210,10 @@ int Defrag::add_frag_node(FragTracker* ft,
         {
             DebugFormat(DEBUG_FRAG,
                 "Size: %d, offset: %d, len %d, "
-                "Prev: 0x%x, Next: 0x%x, This: 0x%x, Ord: %d, %s\n",
+                "Prev: 0x%p, Next: 0x%p, This: 0x%p, Ord: %d, %s\n",
                 newfrag->size, newfrag->offset,
-                newfrag->flen, newfrag->prev,
-                newfrag->next, newfrag, newfrag->ord,
+                newfrag->flen, (void*) newfrag->prev,
+                (void*) newfrag->next, (void*) newfrag, newfrag->ord,
                 newfrag->last ? "Last" : "");
             newfrag = newfrag->next;
         }
@@ -2244,21 +2226,16 @@ int Defrag::add_frag_node(FragTracker* ft,
      * grab/generate a new frag node
      */
     {
-        if (mem_in_use > FRAG_MEMCAP)
-        {
-            flow_con->prune_flows(PktType::IP, p);
-        }
-
         /*
          * build a frag struct to track this particular fragment
          */
-        newfrag = (Fragment*)SnortAlloc(sizeof(Fragment));
+        newfrag = (Fragment*)snort_calloc(sizeof(Fragment));
         mem_in_use += sizeof(Fragment);
 
         /*
          * allocate some space to hold the actual data
          */
-        newfrag->fptr = (uint8_t*)SnortAlloc(fragLength);
+        newfrag->fptr = (uint8_t*)snort_calloc(fragLength);
         mem_in_use += fragLength;
 
         ip_stats.mem_in_use = mem_in_use;
@@ -2292,8 +2269,8 @@ int Defrag::add_frag_node(FragTracker* ft,
 
     DebugFormat(DEBUG_FRAG,
         "[*] Inserted new frag %d@%d ptr %p data %p prv %p nxt %p\n",
-        newfrag->size, newfrag->offset, newfrag, newfrag->data,
-        newfrag->prev, newfrag->next);
+        newfrag->size, newfrag->offset, (void*) newfrag, newfrag->data,
+        (void*) newfrag->prev, (void*) newfrag->next);
 
     /*
      * record the current size of the data in the fraglist
@@ -2301,7 +2278,7 @@ int Defrag::add_frag_node(FragTracker* ft,
     ft->frag_bytes += newfrag->size;
 
     DebugFormat(DEBUG_FRAG,
-        "[#] accumulated bytes on FragTracker %d, count"
+        "[#] accumulated bytes on FragTracker %u, count"
         " %d\n", ft->frag_bytes, ft->fraglist_count);
 
     *retFrag = newfrag;
@@ -2320,7 +2297,6 @@ int Defrag::add_frag_node(FragTracker* ft,
  * @retval FRAG_INSERT_OK All okay
  */
 int Defrag::dup_frag_node(
-    Packet* p,
     FragTracker* ft,
     Fragment* left,
     Fragment** retFrag)
@@ -2331,21 +2307,16 @@ int Defrag::dup_frag_node(
      * grab/generate a new frag node
      */
     {
-        if (mem_in_use > FRAG_MEMCAP)
-        {
-            flow_con->prune_flows(PktType::IP, p);
-        }
-
         /*
          * build a frag struct to track this particular fragment
          */
-        newfrag = (Fragment*)SnortAlloc(sizeof(Fragment));
+        newfrag = (Fragment*)snort_calloc(sizeof(Fragment));
         mem_in_use += sizeof(Fragment);
 
         /*
          * allocate some space to hold the actual data
          */
-        newfrag->fptr = (uint8_t*)SnortAlloc(left->flen);
+        newfrag->fptr = (uint8_t*)snort_calloc(left->flen);
         mem_in_use += left->flen;
 
         ip_stats.mem_in_use = mem_in_use;
@@ -2371,8 +2342,8 @@ int Defrag::dup_frag_node(
 
     DebugFormat(DEBUG_FRAG,
         "[*] Inserted new frag %d@%d ptr %p data %p prv %p nxt %p\n",
-        newfrag->size, newfrag->offset, newfrag, newfrag->data,
-        newfrag->prev, newfrag->next);
+        newfrag->size, newfrag->offset, (void*) newfrag, newfrag->data,
+        (void*) newfrag->prev, (void*) newfrag->next);
 
     /*
      * record the current size of the data in the fraglist
@@ -2380,7 +2351,7 @@ int Defrag::dup_frag_node(
     ft->frag_bytes += newfrag->size;
 
     DebugFormat(DEBUG_FRAG,
-        "[#] accumulated bytes on FragTracker %d, count"
+        "[#] accumulated bytes on FragTracker %u, count"
         " %d\n", ft->frag_bytes, ft->fraglist_count);
 
     *retFrag = newfrag;

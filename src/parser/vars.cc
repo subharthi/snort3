@@ -51,7 +51,6 @@
 #include "detection/signature.h"
 #include "detection/sfrim.h"
 #include "utils/util.h"
-#include "utils/snort_bounds.h"
 #include "utils/sflsq.h"
 #include "ports/port_object.h"
 #include "protocols/packet.h"
@@ -90,7 +89,7 @@ void config_set_var(SnortConfig* sc, const char* val)
 
         /* Save these and parse when snort conf is parsed so
          * they can be added to the snort conf configuration */
-        node = (VarNode*)SnortAlloc(sizeof(VarNode));
+        node = (VarNode*)snort_calloc(sizeof(VarNode));
 
         /* Make sure it's not already in the list */
         if (sc->var_list != NULL)
@@ -102,7 +101,7 @@ void config_set_var(SnortConfig* sc, const char* val)
                 if (strncasecmp(tmp->name, val, equal_ptr - val) == 0)
                 {
                     ParseError("Duplicate variable name: %s.", tmp->name);
-                    free(node);
+                    snort_free(node);
                     return;
                 }
                 tmp = tmp->next;
@@ -110,8 +109,8 @@ void config_set_var(SnortConfig* sc, const char* val)
         }
 
         node->name = SnortStrndup(val, equal_ptr - val);
-        node->value = SnortStrdup(equal_ptr + 1);
-        node->line = SnortStrdup(val);
+        node->value = snort_strdup(equal_ptr + 1);
+        node->line = snort_strdup(val);
         node->next = sc->var_list;
         sc->var_list = node;
 
@@ -130,15 +129,15 @@ void FreeVarList(VarNode* head)
         head = head->next;
 
         if (tmp->name != NULL)
-            free(tmp->name);
+            snort_free(tmp->name);
 
         if (tmp->value != NULL)
-            free(tmp->value);
+            snort_free(tmp->value);
 
         if (tmp->line != NULL)
-            free(tmp->line);
+            snort_free(tmp->line);
 
-        free(tmp);
+        snort_free(tmp);
     }
 }
 
@@ -227,7 +226,7 @@ VarEntry* VarAlloc()
 {
     VarEntry* pve;
 
-    pve = (VarEntry*)SnortAlloc(sizeof(VarEntry));
+    pve = (VarEntry*)snort_calloc(sizeof(VarEntry));
 
     return( pve);
 }
@@ -353,7 +352,7 @@ int VarIsIpList(vartable_t* ip_vartable, const char* value)
     char* copy, * item;
     int item_is_ip = 1;
 
-    copy = SnortStrdup((const char*)value);
+    copy = snort_strdup((const char*)value);
 
     /* Ensure that the brackets are correct. */
     if (strchr((const char*)copy, ','))
@@ -361,7 +360,7 @@ int VarIsIpList(vartable_t* ip_vartable, const char* value)
         /* This is a list! */
         if (CheckBrackets(copy) == 0)
         {
-            free(copy);
+            snort_free(copy);
             return 0;
         }
     }
@@ -376,7 +375,7 @@ int VarIsIpList(vartable_t* ip_vartable, const char* value)
         item = strtok_r(NULL, "[],!", &lasts);
     }
 
-    free(copy);
+    snort_free(copy);
     return item_is_ip;
 }
 
@@ -589,8 +588,8 @@ VarEntry* VarDefine(
     if (var_table == NULL)
     {
         p = VarAlloc();
-        p->name  = SnortStrdup(name);
-        p->value = SnortStrdup(value);
+        p->name  = snort_strdup(name);
+        p->value = snort_strdup(value);
 
         p->prev = p;
         p->next = p;
@@ -610,9 +609,9 @@ VarEntry* VarDefine(
         if (strcasecmp(p->name, name) == 0)
         {
             if (p->value != NULL)
-                free(p->value);
+                snort_free(p->value);
 
-            p->value = SnortStrdup(value);
+            p->value = snort_strdup(value);
             ParseWarning(WARN_VARS, "Var '%s' redefined\n", p->name);
             return p;
         }
@@ -622,8 +621,8 @@ VarEntry* VarDefine(
     while (p != var_table);     /* List is circular */
 
     p = VarAlloc();
-    p->name  = SnortStrdup(name);
-    p->value = SnortStrdup(value);
+    p->name  = snort_strdup(name);
+    p->value = snort_strdup(value);
     p->prev = var_table;
     p->next = var_table->next;
     p->next->prev = p;
@@ -669,14 +668,14 @@ void DeleteVars(VarEntry* var_table)
     {
         q = p->next;
         if (p->name)
-            free(p->name);
+            snort_free(p->name);
         if (p->value)
-            free(p->value);
+            snort_free(p->value);
         if (p->addrset)
         {
             sfvar_free(p->addrset);
         }
-        free(p);
+        snort_free(p);
         p = q;
         if (p == var_table)
             break;  /* Grumble, it's a friggin circular list */

@@ -194,10 +194,8 @@ static TagNode* TagAlloc(
         }
     }
 
-    tag_node = (TagNode*)calloc(1, sizeof(TagNode));
-
-    if (tag_node != NULL)
-        tag_memory_usage += memory_per_node(hash);
+    tag_node = (TagNode*)snort_calloc(sizeof(TagNode));
+    tag_memory_usage += memory_per_node(hash);
 
     return tag_node;
 }
@@ -219,7 +217,7 @@ static void TagFree(
     if ( node->metric & TAG_METRIC_SESSION )
         s_exclusive = false;
 
-    free((void*)node);
+    snort_free((void*)node);
     tag_memory_usage -= memory_per_node(hash);
 }
 
@@ -247,7 +245,7 @@ static int TagFreeHostNodeFunc(void*, void* data)
 
 /**Reset all data structures and free all memory.
  */
-void TagCacheReset(void)
+void TagCacheReset()
 {
     sfxhash_make_empty(ssn_tag_cache_ptr);
     sfxhash_make_empty(host_tag_cache_ptr);
@@ -272,7 +270,7 @@ static inline void SwapTag(TagNode* np)
     np->key.dp = tport;
 }
 
-void InitTag(void)
+void InitTag()
 {
     unsigned int hashTableSize = TAG_MEMCAP/sizeof(TagNode);
 
@@ -297,7 +295,7 @@ void InitTag(void)
         0);                          /* recycle node flag */
 }
 
-void CleanupTag(void)
+void CleanupTag()
 {
     if (ssn_tag_cache_ptr)
     {
@@ -475,7 +473,7 @@ int CheckTagList(Packet* p, Event* event, void** log_list)
         return 0;
     }
 
-    DebugFormat(DEBUG_FLOW,"Host Tags Active: %d   Session Tags Active: %d\n",
+    DebugFormat(DEBUG_FLOW,"Host Tags Active: %u   Session Tags Active: %u\n",
         sfxhash_count(host_tag_cache_ptr), sfxhash_count(ssn_tag_cache_ptr));
 
     DebugMessage(DEBUG_FLOW, "[*] Checking session tag list (forward)...\n");

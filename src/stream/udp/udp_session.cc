@@ -25,6 +25,7 @@
 
 #include "stream_udp.h"
 #include "udp_module.h"
+#include "udp_ha.h"
 
 #include "stream/stream.h"
 #include "main/snort_types.h"
@@ -70,7 +71,7 @@ static void UdpSessionCleanup(Flow* lwssn)
 static int ProcessUdp(
     Flow* lwssn, Packet* p, StreamUdpConfig*, SFXHASH_NODE*)
 {
-    assert(lwssn->protocol == PktType::UDP);
+    assert(lwssn->pkt_type == PktType::UDP);
 
     if ( stream.blocked_session(lwssn, p) )
         return 0;
@@ -79,7 +80,7 @@ static int ProcessUdp(
         return 0;
 
     /* if both seen, mark established */
-    if (p->packet_flags & PKT_FROM_SERVER)
+    if (p->is_from_server())
     {
         DebugMessage(DEBUG_STREAM_STATE,
             "Stream: Updating on packet from responder\n");
@@ -123,7 +124,7 @@ bool UdpSession::setup(Packet* p)
     ssn_time.tv_usec = p->pkth->ts.tv_usec;
     flow->ssn_state.session_flags |= SSNFLAG_SEEN_SENDER;
 
-    flow->protocol = p->type();
+    flow->pkt_type = p->type();
     flow->ssn_state.direction = FROM_CLIENT;
 
     StreamUdpConfig* pc = get_udp_cfg(flow->ssn_server);
@@ -149,6 +150,7 @@ bool UdpSession::setup(Packet* p)
 void UdpSession::clear()
 {
     UdpSessionCleanup(flow);
+    UdpHAManager::process_deletion(flow);
     flow->clear();
 }
 
@@ -196,7 +198,7 @@ int UdpSession::process(Packet* p)
         UdpSessionCleanup(flow);
         flow->restart();
         flow->ssn_state.session_flags |= SSNFLAG_SEEN_SENDER;
-        udpStats.created++; //FIXIT-M is this correct? will mess with calc of current sessions
+        udpStats.created++; // FIXIT-M is this correct? will mess with calc of current sessions
         udpStats.timeouts++;
     }
 

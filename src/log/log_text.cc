@@ -34,6 +34,7 @@
 
 #include "log.h"
 #include "text_log.h"
+#include "obfuscator.h"
 
 #include "detection/rules.h"
 #include "detection/treenodes.h"
@@ -41,12 +42,14 @@
 #include "detection/detection_util.h"
 #include "main/snort_debug.h"
 #include "main/snort_config.h"
-#include "utils/snort_bounds.h"
+#include "packet_io/sfdaq.h"
+
+// should be able to delete this when we cutover to NHI
+#include "service_inspectors/http_inspect/hi_main.h"  // FIXIT-H bad dependency for Is*Data()
+
+#include "sfip/sf_ip.h"
 #include "utils/util.h"
 #include "utils/util_net.h"
-#include "packet_io/sfdaq.h"
-#include "service_inspectors/http_inspect/hi_main.h"  // FIXIT bad dependency
-#include "sfip/sf_ip.h"
 
 #include "protocols/packet.h"
 #include "protocols/layer.h"
@@ -170,7 +173,7 @@ static void LogGREHeader(TextLog* log, Packet* p)
  */
 void Log2ndHeader(TextLog* log, Packet* p)
 {
-    switch (DAQ_GetBaseProtocol())
+    switch (SFDAQ::get_base_protocol())
     {
     case DLT_EN10MB:            /* Ethernet */
         if (p && (p->num_layers > 0))
@@ -181,7 +184,7 @@ void Log2ndHeader(TextLog* log, Packet* p)
         {
             // FIXIT-L should only be output once!
             ErrorMessage("Datalink %i type 2nd layer display is not "
-                "supported\n", DAQ_GetBaseProtocol());
+                "supported\n", SFDAQ::get_base_protocol());
         }
     }
 }
@@ -392,7 +395,7 @@ void LogIPHeader(TextLog* log, Packet* p)
             (is_ip6 ? layer::get_inner_ip6_frag() : nullptr);
 
         TextLog_Print(log, "%s TTL:%u TOS:0x%X ID:%u IpLen:%u DgmLen:%u",
-            protocol_names[p->get_ip_proto_next()],
+            protocol_names[to_utype(p->get_ip_proto_next())],
             ip6h->hop_lim(),
             ip6h->tos(),
             (ip6_frag ? ip6_frag->id() : 0),
@@ -417,7 +420,7 @@ void LogIPHeader(TextLog* log, Packet* p)
     else
     {
         TextLog_Print(log, "%s TTL:%u TOS:0x%X ID:%u IpLen:%u DgmLen:%u",
-            protocol_names[ip4h->proto()],
+            protocol_names[to_utype(ip4h->proto())],
             ip4h->ttl(),
             ip4h->tos(),
             ip4h->id(),
@@ -791,8 +794,7 @@ static void LogICMPEmbeddedIP(TextLog* log, Packet* p)
         return;
 
     // FIXIT-L -- Allocating a new Packet here is ridiculously excessive.
-    Packet* orig_p = PacketManager::encode_new();
-    orig_p->reset();
+    Packet* orig_p = new Packet;
     Packet& op = *orig_p;
 
     if (!layer::set_api_ip_embed_icmp(p, op.ptrs.ip_api))
@@ -875,7 +877,7 @@ static void LogICMPEmbeddedIP(TextLog* log, Packet* p)
         TextLog_Puts(log, "** END OF DUMP");
     }
 
-    PacketManager::encode_delete(orig_p);
+    delete orig_p;
 }
 
 /*--------------------------------------------------------------------
@@ -1253,8 +1255,7 @@ static void LogCharData(TextLog* log, const char* data, int len)
 static const char SEPARATOR[] =
           "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -";
 
-// FIXIT-L expecting complaints because this isn't 16  :(
-#define BYTES_PER_FRAME 20
+#define BYTES_PER_FRAME 20  // FIXIT-L make configurable
 /* middle:"41 02 43 04 45 06 47 08 49 0A 4B 0C 4D 0E 4F 0F 01 02 03 04  A.C.E.G.I.K.M.O....."
    at end:"41 02 43 04 45 06 47 08                                      A.C.E.G."*/
 
@@ -1266,8 +1267,8 @@ void LogNetData(TextLog* log, const uint8_t* data, const int len, Packet* p)
     const uint8_t* pb = data;
     const uint8_t* end = data + len;
 
-    const uint8_t ipv4_id = PacketManager::proto_id(IPPROTO_ID_IPIP);
-    const uint8_t ipv6_id = PacketManager::proto_id(IPPROTO_ID_IPV6);
+    const ProtocolIndex ipv4_idx = PacketManager::proto_idx(ProtocolId::IPIP);
+    const ProtocolIndex ipv6_idx = PacketManager::proto_idx(ProtocolId::IPV6);
 
     int offset = 0;
     char conv[] = "0123456789ABCDEF";   /* xlation lookup table */
@@ -1283,13 +1284,13 @@ void LogNetData(TextLog* log, const uint8_t* data, const int len, Packet* p)
     if (p && SnortConfig::obfuscate() )
     {
         int num_layers =  p->num_layers;
-        uint8_t lyr_proto = 0;
+        ProtocolIndex lyr_idx = 0;
 
         for ( i = 0; i < num_layers; i++ )
         {
-            lyr_proto = PacketManager::proto_id(p->layers[i].prot_id);
+            lyr_idx = PacketManager::proto_idx(p->layers[i].prot_id);
 
-            if ( lyr_proto == ipv4_id || lyr_proto == ipv6_id)
+            if ( lyr_idx == ipv4_idx || lyr_idx == ipv6_idx)
             {
                 if (p->layers[i].length && p->layers[i].start)
                     break;
@@ -1301,7 +1302,7 @@ void LogNetData(TextLog* log, const uint8_t* data, const int len, Packet* p)
         if (ip_start > 0 )
         {
             ip_ob_start = ip_start + 10;
-            if (lyr_proto == ipv4_id)
+            if (lyr_idx == ipv4_idx)
                 ip_ob_end = ip_ob_start + 2 + 2*(sizeof(struct in_addr));
             else
                 ip_ob_end = ip_ob_start + 2 + 2*(sizeof(struct in6_addr));
@@ -1397,10 +1398,10 @@ void LogIPPkt(TextLog* log, Packet* p)
         if ( p->proto_bits & PROTO_BIT__MPLS )
             LogMPLSHeader(log, p);
 
-        // FIXIT-L --> log everything in order!!
+        // FIXIT-L log all layers in order
         ip::IpApi tmp_api = p->ptrs.ip_api;
         int8_t num_layer = 0;
-        uint8_t tmp_next = p->get_ip_proto_next();
+        IpProtocol tmp_next = p->get_ip_proto_next();
         bool first = true;
 
         while (layer::set_outer_ip_api(p, p->ptrs.ip_api, p->ip_proto_next, num_layer) &&
@@ -1447,7 +1448,7 @@ void LogIPPkt(TextLog* log, Packet* p)
             break;
 
         case PktType::ICMP:
-            // FIXIT-L   log accurate ICMP6 data.
+            // FIXIT-L log accurate ICMP6 data.
             if (p->is_ip6())
                 break;
 
@@ -1485,16 +1486,29 @@ void LogPayload(TextLog* log, Packet* p)
         }
         else
         {
-            LogNetData(log, p->data, p->dsize, p);
-            if (!IsJSNormData(p->flow))
+            if ( p->obfuscator )
             {
-                TextLog_Print(log, "%s\n", "Normalized JavaScript for this packet");
-                LogNetData(log, g_file_data.data, g_file_data.len, p);
+                // FIXIT-P avoid string copy
+                std::string buf(p->data, p->data + p->dsize);
+
+                for ( const auto& b : *p->obfuscator )
+                    buf.replace(b.offset, b.length, b.length, '.');
+
+                LogNetData(log, (const uint8_t*)buf.c_str(), p->dsize, p);
             }
-            else if (!IsGzipData(p->flow))
+            else
             {
-                TextLog_Print(log, "%s\n", "Decompressed Data for this packet");
-                LogNetData(log, g_file_data.data, g_file_data.len, p);
+                LogNetData(log, p->data, p->dsize, p);
+                if (!IsJSNormData(p->flow))
+                {
+                    TextLog_Print(log, "%s\n", "Normalized JavaScript for this packet");
+                    LogNetData(log, g_file_data.data, g_file_data.len, p);
+                }
+                else if (!IsGzipData(p->flow))
+                {
+                    TextLog_Print(log, "%s\n", "Decompressed Data for this packet");
+                    LogNetData(log, g_file_data.data, g_file_data.len, p);
+                }
             }
         }
     }

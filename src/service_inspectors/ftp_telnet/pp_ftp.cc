@@ -40,23 +40,16 @@
 #include "config.h"
 #endif
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/types.h>
-
-#include "pp_telnet.h"
-#include "ftp_module.h"
 #include "ft_main.h"
-#include "ftpp_return_codes.h"
-#include "ftp_cmd_lookup.h"
 #include "ftp_bounce_lookup.h"
+#include "ftp_cmd_lookup.h"
+#include "ftp_module.h"
+#include "ftpp_return_codes.h"
+#include "pp_telnet.h"
 
-#include "main/snort_debug.h"
-#include "stream/stream_api.h"
 #include "detection/detection_util.h"
-#include "sfip/sfip_t.h"
 #include "file_api/file_service.h"
+#include "sfip/sf_ip.h"
 
 #ifndef MAXHOSTNAMELEN /* Why doesn't Windows define this? */
 #define MAXHOSTNAMELEN 256
@@ -328,7 +321,7 @@ static int getIP2428(
 
         case 3:      /* check port */
             port = atoi(tok);
-            if ( port < 0 || port > MAXPORTS-1 )
+            if ( port < 0 || port > MAX_PORTS-1 )
                 return FTPP_MALFORMED_IP_PORT;
             *portRet = port;
             fieldMask |= 4;
@@ -1090,7 +1083,7 @@ static int do_stateful_checks(FTP_SESSION* session, Packet* p,
                                 stream.ignore_session(
                                     &session->clientIP, session->clientPort,
                                     &session->serverIP, session->serverPort,
-                                    p->type(), SSN_DIR_BOTH, 
+                                    p->type(), SSN_DIR_BOTH,
                                     FtpDataFlowData::flow_id);
                             }
                         }
@@ -1162,7 +1155,7 @@ static int do_stateful_checks(FTP_SESSION* session, Packet* p,
                             stream.ignore_session(
                                 &session->clientIP, session->clientPort,
                                 &session->serverIP, session->serverPort,
-                                p->type(), SSN_DIR_BOTH, 
+                                p->type(), SSN_DIR_BOTH,
                                 FtpDataFlowData::flow_id);
                         }
                     }
@@ -1727,7 +1720,7 @@ int check_ftp(FTP_SESSION* ftpssn, Packet* p, int iMode)
                          * FTP_DATA_SESSION for tracking. */
                         if (ftpssn->filename)
                         {
-                            free(ftpssn->filename);
+                            snort_free(ftpssn->filename);
                             ftpssn->filename = NULL;
                             ftpssn->file_xfer_info = FTPP_FILE_IGNORE;
                         }
@@ -1738,13 +1731,10 @@ int check_ftp(FTP_SESSION* ftpssn, Packet* p, int iMode)
                         if (((req->param_begin != NULL) && (req->param_size > 0))
                             && (CmdConf->file_get_cmd || CmdConf->file_put_cmd))
                         {
-                            ftpssn->filename = (char*)malloc(req->param_size+1);
-                            if (ftpssn->filename)
-                            {
-                                memcpy(ftpssn->filename, req->param_begin, req->param_size);
-                                ftpssn->filename[req->param_size] = '\0';
-                                ftpssn->file_xfer_info = req->param_size;
-                            }
+                            ftpssn->filename = (char*)snort_alloc(req->param_size+1);
+                            memcpy(ftpssn->filename, req->param_begin, req->param_size);
+                            ftpssn->filename[req->param_size] = '\0';
+                            ftpssn->file_xfer_info = req->param_size;
 
                             // 0 for Download, 1 for Upload
                             ftpssn->data_xfer_dir = CmdConf->file_get_cmd ? false : true;

@@ -144,8 +144,8 @@ public:
     void term();
 
     void reset(bool do_cleanup = true);
-    void restart(bool freeAppData = true);
-    void clear(bool freeAppData = true);
+    void restart(bool free_flow_data = true);
+    void clear(bool free_flow_data = true);
 
     int set_application_data(FlowData*);
     FlowData* get_application_data(uint32_t proto);
@@ -180,12 +180,12 @@ public:
         return ssn_state.session_flags &= ~flags;
     }
 
-    uint32_t get_session_flags(void)
+    uint32_t get_session_flags()
     {
         return ssn_state.session_flags;
     }
 
-    int get_ignore_direction(void)
+    int get_ignore_direction()
     {
         return ssn_state.ignore_direction;
     }
@@ -208,7 +208,7 @@ public:
     { return (ssn_state.session_flags & SSNFLAG_PROXIED) != 0; }
 
     bool is_stream()
-    { return (unsigned)protocol & (unsigned)PktType::STREAM; }
+    { return to_utype(pkt_type) & to_utype(PktType::STREAM); }
 
     void block()
     { ssn_state.session_flags |= SSNFLAG_BLOCK; }
@@ -285,8 +285,9 @@ public:  // FIXIT-M privatize if possible
     const FlowKey* key;
     class Session* session;
     class BitOp* bitop;
-    uint8_t ip_proto; // FIXIT-M  -- do we need both of these?
-    PktType protocol; // ^^
+    class FlowHAState* ha_state;
+    uint8_t ip_proto; // FIXIT-M do we need both of these?
+    PktType pkt_type; // ^^
 
     // these fields are always set; not zeroed
     Flow* prev, * next;
@@ -305,7 +306,6 @@ public:  // FIXIT-M privatize if possible
 
     FlowState flow_state;
 
-    // FIXIT-L can client and server ip and port be removed from flow?
     sfip_t client_ip; // FIXIT-L family and bits should be changed to uint16_t
     sfip_t server_ip; // or uint8_t to reduce sizeof from 24 to 20
 
@@ -328,6 +328,7 @@ public:  // FIXIT-M privatize if possible
 
 public:
     LwState ssn_state;
+    LwState previous_ssn_state;
 };
 
 #endif

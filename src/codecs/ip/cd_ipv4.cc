@@ -111,7 +111,7 @@ public:
     Ipv4Codec() : Codec(CD_IPV4_NAME) { }
     ~Ipv4Codec() { }
 
-    void get_protocol_ids(std::vector<uint16_t>& v) override;
+    void get_protocol_ids(std::vector<ProtocolId>& v) override;
     bool decode(const RawData&, CodecData&, DecodeData&) override;
     void log(TextLog* const, const uint8_t* pkt, const uint16_t len) override;
     bool encode(const uint8_t* const raw_in, const uint16_t raw_len,
@@ -134,10 +134,10 @@ static THREAD_LOCAL std::array<uint16_t, IP_ID_COUNT> s_id_pool {
 };
 }  // namespace
 
-void Ipv4Codec::get_protocol_ids(std::vector<uint16_t>& v)
+void Ipv4Codec::get_protocol_ids(std::vector<ProtocolId>& v)
 {
-    v.push_back(ETHERTYPE_IPV4);
-    v.push_back(IPPROTO_ID_IPIP);
+    v.push_back(ProtocolId::ETHERTYPE_IPV4);
+    v.push_back(ProtocolId::IPIP);
 }
 
 bool Ipv4Codec::decode(const RawData& raw, CodecData& codec, DecodeData& snort)
@@ -188,8 +188,8 @@ bool Ipv4Codec::decode(const RawData& raw, CodecData& codec, DecodeData& snort)
     if (ip_len > raw.len)
     {
         DebugFormat(DEBUG_DECODE,
-            "IP Len field is %d bytes bigger than captured length.\n"
-            "    (ip.len: %lu, cap.len: %lu)\n",
+            "IP Len field is %u bytes bigger than captured length.\n"
+            "    (ip.len: %u, cap.len: %u)\n",
             ip_len - raw.len, ip_len, raw.len);
 
         codec_event(codec, DECODE_IPV4_DGRAM_GT_CAPLEN);
@@ -207,8 +207,8 @@ bool Ipv4Codec::decode(const RawData& raw, CodecData& codec, DecodeData& snort)
     if (ip_len < hlen)
     {
         DebugFormat(DEBUG_DECODE,
-            "IP dgm len (%d bytes) < IP hdr "
-            "len (%d bytes), packet discarded\n", ip_len, hlen);
+            "IP dgm len (%u bytes) < IP hdr "
+            "len (%hu bytes), packet discarded\n", ip_len, hlen);
 
         codec_event(codec, DECODE_IPV4_DGRAM_LT_IPHDR);
         return false;
@@ -320,13 +320,13 @@ bool Ipv4Codec::decode(const RawData& raw, CodecData& codec, DecodeData& snort)
     /* if this packet isn't a fragment
      * or if it is, its a UDP packet and offset is 0 */
     if (!(snort.decode_flags & DECODE_FRAG) /*||
-        ((frag_off == 0) &&  // FIXIT-M this forces flow to udp instead of ip
-         (iph->proto() == IPPROTO_UDP))*/)
+        ((frag_off == 0) &&  // FIXIT-H this forces flow to udp instead of ip
+         (iph->proto() == IpProtocol::UDP))*/)
     {
-        if (iph->proto() >= MIN_UNASSIGNED_IP_PROTO)
+        if (to_utype(iph->proto()) >= to_utype(ProtocolId::MIN_UNASSIGNED_IP_PROTO))
             codec_event(codec, DECODE_IP_UNASSIGNED_PROTO);
         else
-            codec.next_prot_id = iph->proto();
+            codec.next_prot_id = (ProtocolId)iph->proto();
     }
 
     return true;
@@ -543,7 +543,7 @@ void Ipv4Codec::log(TextLog* const text_log, const uint8_t* raw_pkt,
 {
     const IP4Hdr* const ip4h = reinterpret_cast<const IP4Hdr*>(raw_pkt);
 
-    // FIXIT-L  -->  This does NOT obfuscate correctly
+    // FIXIT-H this does NOT obfuscate correctly
     if (SnortConfig::obfuscate())
     {
         TextLog_Print(text_log, "xxx.xxx.xxx.xxx -> xxx.xxx.xxx.xxx");
@@ -666,8 +666,8 @@ bool Ipv4Codec::encode(const uint8_t* const raw_in, const uint16_t /*raw_len*/,
      * cycles and use the literal header size for checksum */
     ip4h_out->ip_csum = checksum::ip_cksum((uint16_t*)ip4h_out, ip::IP4_HEADER_LEN);
 
-    enc.next_proto = IPPROTO_ID_IPIP;
-    enc.next_ethertype = ETHERTYPE_IPV4;
+    enc.next_proto = IpProtocol::IPIP;
+    enc.next_ethertype = ProtocolId::ETHERTYPE_IPV4;
     return true;
 }
 
@@ -740,8 +740,7 @@ static void ipv4_codec_ginit()
         "224.32.0.0/11,224.64.0.0/10,224.128.0.0/9,225.0.0.0/8,226.0.0.0/7,"
         "228.0.0.0/6,234.0.0.0/7,236.0.0.0/7,238.0.0.0/8]");
 
-    if ( MulticastReservedIp == nullptr )
-        FatalError("Could not initialize IPv4 MulticastReservedIp\n");
+    assert(MulticastReservedIp);
 }
 
 static void ipv4_codec_gterm()

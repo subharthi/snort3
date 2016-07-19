@@ -7,7 +7,9 @@ main.h
 
 if STATIC_INSPECTORS
 lib_list = \
+network_inspectors/appid/libappid.a \
 network_inspectors/arp_spoof/libarp_spoof.a \
+network_inspectors/packet_capture/libpacket_capture.a \
 service_inspectors/back_orifice/libback_orifice.a \
 service_inspectors/dce_rpc/libdce_rpc.a \
 service_inspectors/dnp3/libdnp3.a \
@@ -28,11 +30,11 @@ codecs/root/libroot_codecs.a \
 codecs/link/liblink_codecs.a
 endif
 
-if BUILD_UNIT_TESTS
+if ENABLE_UNIT_TESTS
 test_list = catch/libcatch_tests.a
 endif
 
-if BUILD_PIGLET
+if ENABLE_PIGLET
 pig_list = \
 piglet/libpiglet.a \
 piglet_plugins/libpiglet_plugins.a
@@ -72,7 +74,6 @@ stream/udp/libstream_udp.a \
 stream/user/libstream_user.a \
 stream/file/libstream_file.a \
 stream/libstream_paf.a \
-file_api/libfile_api.a \
 mime/libmime.a \
 service_inspectors/http_inspect/libhttp_inspect.a \
 $(pig_list) \
@@ -89,6 +90,7 @@ control/libcontrol.a \
 filters/libfilter.a \
 detection/libdetection.a \
 framework/libframework.a \
+file_api/libfile_api.a \
 time/libtime.a \
 latency/liblatency.a \
 profiler/libprofiler.a \
@@ -149,10 +151,10 @@ time \
 profiler \
 utils
 
-if BUILD_UNIT_TESTS
+if ENABLE_UNIT_TESTS
 SUBDIRS += catch
 endif
 
-if BUILD_PIGLET
+if ENABLE_PIGLET
 SUBDIRS += piglet piglet_plugins
 endif

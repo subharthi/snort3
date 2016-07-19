@@ -113,7 +113,7 @@ public:
     bool fastpath();
 
 private:
-    // FIXIT-H J use custom struct instead of std::pair for better semantics
+    // FIXIT-L use custom struct instead of std::pair for better semantics
     // std::vector<std::pair<LatencyTimer<Clock>, bool>> contexts;
     std::vector<PacketTimer<Clock>> timers;
     const ConfigWrapper& config;
@@ -248,6 +248,17 @@ bool PacketLatency::fastpath()
     return false;
 }
 
+void PacketLatency::tterm()
+{
+    using packet_latency::impl;
+
+    if ( impl )
+    {
+        delete impl;
+        impl = nullptr;
+    }
+}
+
 // -----------------------------------------------------------------------------
 // unit tests
 // -----------------------------------------------------------------------------
@@ -257,7 +268,7 @@ bool PacketLatency::fastpath()
 namespace t_packet_latency
 {
 
-struct MockConfigWrapper : packet_latency::ConfigWrapper
+struct MockConfigWrapper : public packet_latency::ConfigWrapper
 {
     PacketLatencyConfig config;
 
@@ -265,14 +276,14 @@ struct MockConfigWrapper : packet_latency::ConfigWrapper
     { return &config; }
 };
 
-struct EventHandlerSpy : packet_latency::EventHandler
+struct EventHandlerSpy : public packet_latency::EventHandler
 {
     unsigned count = 0;
     void handle(const packet_latency::Event&) override
     { ++count; }
 };
 
-struct MockClock : ClockTraits<hr_clock>
+struct MockClock : public ClockTraits<hr_clock>
 {
     static hr_time t;
 
@@ -292,7 +303,7 @@ hr_time MockClock::t = hr_time(0_ticks);
 
 TEST_CASE ( "packet latency impl", "[latency]" )
 {
-    // FIXIT-H J need to add checks for events
+    // FIXIT-L need to add checks for events
 
     using namespace t_packet_latency;
 

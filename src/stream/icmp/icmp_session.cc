@@ -41,6 +41,7 @@
 #include "protocols/tcp.h"
 #include "sfip/sf_ip.h"
 
+#include "icmp_ha.h"
 #include "icmp_module.h"
 #include "icmp_session.h"
 
@@ -91,7 +92,7 @@ static int ProcessIcmpUnreach(Packet* p)
     src = iph.get_src();
     dst = iph.get_dst();
 
-    skey.protocol = p->get_ip_proto_next();
+    skey.pkt_type = p->type();
     skey.version = src->is_ip4() ? 4 : 6;
 
     if (p->proto_bits & PROTO_BIT__TCP_EMBED_ICMP)
@@ -204,6 +205,7 @@ bool IcmpSession::setup(Packet*)
 void IcmpSession::clear()
 {
     IcmpSessionCleanup(flow);
+    IcmpHAManager::process_deletion(flow);
 }
 
 int IcmpSession::process(Packet* p)

@@ -208,7 +208,7 @@ void FastLogger::alert(Packet* p, const char* msg, Event* event)
 
         if (SnortConfig::alert_interface())
         {
-            TextLog_Print(fast_log, " <%s> ", PRINT_INTERFACE(DAQ_GetInterfaceSpec()));
+            TextLog_Print(fast_log, " <%s> ", PRINT_INTERFACE(SFDAQ::get_interface_spec()));
         }
 
         if ( msg )
@@ -233,9 +233,8 @@ void FastLogger::alert(Packet* p, const char* msg, Event* event)
             LogNetData(fast_log, p->data, p->dsize, p);
 
 #if 0
-        // FIXIT-L LogArpHeader unimplemented
         else if (p->proto_bits & PROTO_BIT__ARP)
-            LogArpHeader(fast_log, p);
+            LogArpHeader(fast_log, p);  // FIXIT-L unimplemented
 #endif
     }
     TextLog_NewLine(fast_log);

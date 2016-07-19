@@ -206,6 +206,7 @@ NORETURN static void show_help(SnortConfig* sc, const char* val, HelpType ht)
     }
     ModuleManager::term();
     PluginManager::release_plugins();
+    ScriptManager::release_scripts();
     delete snort_conf;
     exit(0);
 }
@@ -297,32 +298,29 @@ NORETURN void dump_rule_text(SnortConfig*, const char* val)
     exit(0);
 }
 
-NORETURN void dump_version(SnortConfig*, const char*)
+NORETURN void dump_version(SnortConfig*)
 {
     cout << VERSION << endl;
     exit(0);
 }
 
-NORETURN void help_version(SnortConfig*, const char*)
+NORETURN void help_version(SnortConfig*)
 {
     DisplayBanner();
     exit(0);
 }
 
-NORETURN void list_interfaces(SnortConfig*, const char*)
+NORETURN void list_interfaces(SnortConfig*)
 {
     PrintAllInterfaces();
     exit(0);
 }
 
-NORETURN void list_daqs(SnortConfig* sc, const char* val)
+NORETURN void list_daqs(SnortConfig* sc)
 {
-    if ( val )
-        ConfigDaqDir(sc, val);
-
-    DAQ_Load(sc);
-    DAQ_PrintTypes(stdout);
-    DAQ_Unload();
+    SFDAQ::load(sc);
+    SFDAQ::print_types(cout);
+    SFDAQ::unload();
     exit(0);
 }
 

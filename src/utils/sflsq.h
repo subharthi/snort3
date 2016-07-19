@@ -21,15 +21,18 @@
 #ifndef SFLSQ_H
 #define SFLSQ_H
 
+#include "main/snort_types.h"
+
 // Simple LIST, STACK, QUEUE DICTIONARY (LIST BASED) interface
-// All of these functions are based on lists, which use
-// the standard malloc.
+// All of these functions are based on lists.
 // Use STL containers instead of these if possible.
 
-// FIXIT-L: If we're going to keep this interface around
-//          (instead of using STL data structures)
-//          it would make sense to template the interfaces
-//          instead of using a void* for data
+// FIXIT-L if we're going to keep sflsq around (instead of using STL data
+// structures) it would make sense to template the interfaces instead of
+// using a void* for data
+
+// FIXIT-M but we are going to delete sflsq and use STL instead
+
 // Note that NODE_DATA can be redefined with the typedef below
 typedef void* NODE_DATA;
 
@@ -71,27 +74,26 @@ typedef sf_list SF_LIST;
 // -----------------------------------------------------------------------------
 // Linked List Interface
 // -----------------------------------------------------------------------------
-SF_LIST* sflist_new(void);
-void sflist_init(SF_LIST*);
-int sflist_add_tail(SF_LIST*, NODE_DATA);
-int sflist_add_head(SF_LIST*, NODE_DATA);
-int sflist_add_before(SF_LIST*, SF_LNODE*, NODE_DATA);
-int sflist_add_after(SF_LIST*, SF_LNODE*, NODE_DATA);
-NODE_DATA sflist_remove_head(SF_LIST*);
-NODE_DATA sflist_remove_tail(SF_LIST*);
-void sflist_remove_node(SF_LIST*, SF_LNODE*);
-int sflist_count(SF_LIST*);
-NODE_DATA sflist_first(SF_LIST*, SF_LNODE**);
-NODE_DATA sflist_next(SF_LNODE**);
-void sflist_free(SF_LIST*);
-void sflist_free_all(SF_LIST*, void (* free)(void*) );
-void sflist_static_free_all(SF_LIST*, void (* nfree)(void*));
+SO_PUBLIC SF_LIST* sflist_new();
+SO_PUBLIC void sflist_init(SF_LIST*);
+SO_PUBLIC void sflist_add_tail(SF_LIST*, NODE_DATA);
+SO_PUBLIC void sflist_add_head(SF_LIST*, NODE_DATA);
+SO_PUBLIC void sflist_add_before(SF_LIST*, SF_LNODE*, NODE_DATA);
+SO_PUBLIC NODE_DATA sflist_remove_head(SF_LIST*);
+SO_PUBLIC NODE_DATA sflist_remove_tail(SF_LIST*);
+SO_PUBLIC void sflist_remove_node(SF_LIST*, SF_LNODE*);
+SO_PUBLIC int sflist_count(SF_LIST*);
+SO_PUBLIC NODE_DATA sflist_first(SF_LIST*, SF_LNODE**);
+SO_PUBLIC NODE_DATA sflist_next(SF_LNODE**);
+SO_PUBLIC void sflist_free(SF_LIST*);
+SO_PUBLIC void sflist_free_all(SF_LIST*, void (* free)(void*) );
+SO_PUBLIC void sflist_static_free_all(SF_LIST*, void (* nfree)(void*));
 
 // -----------------------------------------------------------------------------
 //  Queue Interface ( FIFO - First in, First out )
 // -----------------------------------------------------------------------------
-SF_QUEUE* sfqueue_new(void);
-int sfqueue_add(SF_QUEUE*, NODE_DATA);
+SF_QUEUE* sfqueue_new();
+void sfqueue_add(SF_QUEUE*, NODE_DATA);
 NODE_DATA sfqueue_remove(SF_QUEUE*);
 int sfqueue_count(SF_QUEUE*);
 void sfqueue_free(SF_QUEUE*);

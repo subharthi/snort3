@@ -21,6 +21,7 @@
 
 namespace preprocessors
 {
+extern const ConvertMap* appid_map;
 extern const ConvertMap* arpspoof_map;
 extern const ConvertMap* arpspoof_host_map;
 extern const ConvertMap* bo_map;
@@ -34,6 +35,8 @@ extern const ConvertMap* ftptelnet_protocol_map;
 extern const ConvertMap* gtp_map;
 extern const ConvertMap* httpinspect_map;
 extern const ConvertMap* httpinspect_server_map;
+extern const ConvertMap* nhttpinspect_map;
+extern const ConvertMap* nhttpinspect_server_map;
 extern const ConvertMap* normalizer_icmp4_map;
 extern const ConvertMap* normalizer_icmp6_map;
 extern const ConvertMap* normalizer_ip4_map;
@@ -57,8 +60,9 @@ extern const ConvertMap* stream_global_map;
 extern const ConvertMap* stream_tcp_map;
 extern const ConvertMap* stream_udp_map;
 
-const std::vector<const ConvertMap*> preprocessor_api =
+std::vector<const ConvertMap*> preprocessor_api =
 {
+    appid_map,
     arpspoof_map,
     arpspoof_host_map,
     bo_map,
@@ -71,8 +75,6 @@ const std::vector<const ConvertMap*> preprocessor_api =
     ftptelnet_map,
     ftptelnet_protocol_map,
     gtp_map,
-    httpinspect_map,
-    httpinspect_server_map,
     imap_map,
     modbus_map,
     normalizer_icmp4_map,
@@ -96,5 +98,21 @@ const std::vector<const ConvertMap*> preprocessor_api =
     stream_udp_map,
 //    nullptr,
 };
+
+std::vector<const ConvertMap*> get_preprocessor_api(bool ohi_convert)
+{
+    if( ohi_convert )
+    {
+        preprocessor_api.push_back(httpinspect_map);
+        preprocessor_api.push_back(httpinspect_server_map);
+    }
+    else
+    {
+        preprocessor_api.push_back(nhttpinspect_map);
+        preprocessor_api.push_back(nhttpinspect_server_map);
+    }
+
+    return preprocessor_api;
+}
 } // namespace preprocessors
 

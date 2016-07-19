@@ -49,7 +49,7 @@ static SIP_DialogData* SIP_addDialog(SIPMsg*, SIP_DialogData*, SIP_DialogList*);
 static int SIP_deleteDialog(SIP_DialogData*, SIP_DialogList*);
 
 #ifdef DEBUG_MSGS
-void SIP_displayMedias(SIP_MediaList* dList);
+static void SIP_displayMedias(SIP_MediaList* dList);
 #endif
 
 /********************************************************************
@@ -149,7 +149,7 @@ static int SIP_processInvite(SIPMsg* sipMsg, SIP_DialogData* dialog, SIP_DialogL
     // check whether this invite has authorization information
     if ((SIP_DLG_AUTHENCATING != dialog->state) && (NULL != sipMsg->authorization))
     {
-        DebugFormat(DEBUG_SIP, "Dialog state code: %u\n",
+        DebugFormat(DEBUG_SIP, "Dialog state code: %hu\n",
             dialog->status_code);
 
         SnortEventqAdd(GID_SIP, SIP_EVENT_AUTH_INVITE_REPLAY_ATTACK);
@@ -402,14 +402,14 @@ static int SIP_ignoreChannels(SIP_DialogData* dialog, Packet* p, SIP_PROTO_CONF*
     while ((NULL != mdataA)&&(NULL != mdataB))
     {
         //void *ssn;
-        DebugFormat(DEBUG_SIP, "Ignoring channels Source IP: %s Port: %u\n",
+        DebugFormat(DEBUG_SIP, "Ignoring channels Source IP: %s Port: %hu\n",
             sfip_to_str(&mdataA->maddress), mdataA->mport);
-        DebugFormat(DEBUG_SIP, "Ignoring channels Destine IP: %s Port: %u\n",
+        DebugFormat(DEBUG_SIP, "Ignoring channels Destine IP: %s Port: %hu\n",
             sfip_to_str(&mdataB->maddress), mdataB->mport);
 
         /* Call into Streams to mark data channel as something to ignore. */
         FlowData* fd = stream.get_application_data_from_ip_port(
-            (uint8_t)PktType::UDP, IPPROTO_UDP, &mdataA->maddress,mdataA->mport,
+            PktType::UDP, IpProtocol::UDP, &mdataA->maddress,mdataA->mport,
             &mdataB->maddress, mdataB->mport, 0, 0, p->pkth->address_space_id,
             SipFlowData::flow_id);
         if ( fd )
@@ -544,7 +544,7 @@ void SIP_displayMedias(SIP_MediaList* dList)
         mdata =  currSession->medias;
         while (NULL != mdata)
         {
-            DebugFormat(DEBUG_SIP, "Media IP: %s, port: %u, number of ports %u\n",
+            DebugFormat(DEBUG_SIP, "Media IP: %s, port: %hu, number of ports %hhu\n",
                 sfip_to_str(&mdata->maddress), mdata->mport, mdata->numPort);
             mdata = mdata->nextM;
         }
@@ -573,15 +573,12 @@ static SIP_DialogData* SIP_addDialog(SIPMsg* sipMsg, SIP_DialogData* currDialog,
 {
     SIP_DialogData* dialog;
 
-    DebugFormat(DEBUG_SIP, "Add Dialog id: %u, From: %u, To: %u, status code: %u\n",
+    DebugFormat(DEBUG_SIP, "Add Dialog id: %u, From: %u, To: %u, status code: %hu\n",
         sipMsg->dlgID.callIdHash,sipMsg->dlgID.fromTagHash,sipMsg->dlgID.toTagHash,
         sipMsg->status_code);
 
     sip_stats.dialogs++;
-
-    dialog = (SIP_DialogData*)calloc(1, sizeof(SIP_DialogData));
-    if (NULL == dialog)
-        return NULL;
+    dialog = (SIP_DialogData*)snort_calloc(sizeof(SIP_DialogData));
 
     // Add to the head
     dialog->nextD = currDialog;
@@ -642,7 +639,7 @@ static int SIP_deleteDialog(SIP_DialogData* currDialog, SIP_DialogList* dList)
             currDialog->nextD->prevD = currDialog->prevD;
     }
     sip_freeMediaList(currDialog->mediaSessions);
-    free(currDialog);
+    snort_free(currDialog);
     if ( dList->num_dialogs > 0)
         dList->num_dialogs--;
     return true;
@@ -801,7 +798,7 @@ void sip_freeDialogs(SIP_DialogList* list)
             curNode->dlgID.toTagHash,curNode->state);
         nextNode = curNode->nextD;
         sip_freeMediaList(curNode->mediaSessions);
-        free(curNode);
+        snort_free(curNode);
         curNode = nextNode;
     }
 }

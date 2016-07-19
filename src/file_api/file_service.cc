@@ -37,7 +37,7 @@
 #include "file_stats.h"
 #include "file_capture.h"
 #include "file_flows.h"
-#include "file_resume_block.h"
+#include "file_enforcer.h"
 #include "file_lib.h"
 #include "file_config.h"
 
@@ -55,15 +55,15 @@ bool FileService::file_type_id_enabled = false;
 bool FileService::file_signature_enabled = false;
 bool FileService::file_capture_enabled = false;
 bool FileService::file_processing_initiated = false;
-FileBlock* FileService::file_block = nullptr;
+FileEnforcer* FileService::file_enforcer = nullptr;
 
-void FileService::init(void)
+void FileService::init()
 {
     MimeSession::init();
     FileFlows::init();
 }
 
-void FileService::post_init(void)
+void FileService::post_init()
 {
     FileConfig& file_config = snort_conf->file_config;
 
@@ -76,20 +76,20 @@ void FileService::post_init(void)
             file_config.capture_block_size);
 }
 
-void FileService::close(void)
+void FileService::close()
 {
-    if (file_block)
-        delete file_block;
+    if (file_enforcer)
+        delete file_enforcer;
 
     MimeSession::exit();
     FileCapture::exit();
 }
 
-void FileService::start_file_processing(void)
+void FileService::start_file_processing()
 {
     if (!file_processing_initiated)
     {
-        file_block = new FileBlock;
+        file_enforcer = new FileEnforcer;
         //RegisterProfileStats("file", print_file_stats);  FIXIT-M put in module
         file_processing_initiated = true;
     }
@@ -139,7 +139,7 @@ bool FileService::is_file_service_enabled()
 /* Get maximal file depth based on configuration
  * This function must be called after all file services are configured/enabled.
  */
-int64_t FileService::get_max_file_depth(void)
+int64_t FileService::get_max_file_depth()
 {
     FileConfig& file_config =  snort_conf->file_config;
 

@@ -23,12 +23,6 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_MALLOC_TRIM
-#include <malloc.h>
-#endif
-
-#include "thread_config.h"
-
 #include "detection/fp_config.h"
 #include "detection/fp_create.h"
 #include "filters/detection_filter.h"
@@ -43,12 +37,13 @@
 #include "managers/module_manager.h"
 #include "managers/mpse_manager.h"
 #include "memory/memory_config.h"
+#include "packet_io/sfdaq_config.h"
 #include "parser/parser.h"
 #include "parser/vars.h"
 #include "profiler/profiler.h"
 #include "sfip/sf_ip.h"
+#include "thread_config.h"
 #include "target_based/sftarget_reader.h"
-#include "utils/strvec.h"
 
 #ifdef HAVE_HYPERSCAN
 #include "ips_options/ips_regex.h"
@@ -68,7 +63,7 @@ static void FreeRuleStateList(RuleState* head)
     {
         RuleState* tmp = head;
         head = head->next;
-        free(tmp);
+        snort_free(tmp);
     }
 }
 
@@ -80,12 +75,12 @@ static void FreeClassifications(ClassType* head)
         head = head->next;
 
         if ( tmp->name )
-            free(tmp->name);
+            snort_free(tmp->name);
 
         if ( tmp->type )
-            free(tmp->type);
+            snort_free(tmp->type);
 
-        free(tmp);
+        snort_free(tmp);
     }
 }
 
@@ -97,12 +92,12 @@ static void FreeReferences(ReferenceSystemNode* head)
         head = head->next;
 
         if ( tmp->name )
-            free(tmp->name);
+            snort_free(tmp->name);
 
         if ( tmp->url )
-            free(tmp->url);
+            snort_free(tmp->url);
 
-        free(tmp);
+        snort_free(tmp);
     }
 }
 
@@ -162,17 +157,15 @@ SnortConfig::SnortConfig()
     max_metadata_services = DEFAULT_MAX_METADATA_SERVICES;
     mpls_stack_depth = DEFAULT_LABELCHAIN_LENGTH;
 
+    daq_config = new SFDAQConfig();
     InspectorManager::new_config(this);
 
     num_slots = ThreadConfig::get_instance_max();
-    state = (SnortState*)SnortAlloc(sizeof(SnortState)*num_slots);
+    state = (SnortState*)snort_calloc(num_slots, sizeof(SnortState));
 
     profiler = new ProfilerConfig;
-
     latency = new LatencyConfig();
-
     memory = new MemoryConfig();
-
     policy_map = new PolicyMap;
 
     set_inspection_policy(get_inspection_policy());
@@ -212,14 +205,8 @@ SnortConfig::~SnortConfig()
 
     fpDeleteFastPacketDetection(this);
 
-    if ( daq_vars )
-        StringVector_Delete(daq_vars);
-
-    if ( daq_dirs )
-        StringVector_Delete(daq_dirs);
-
     if (eth_dst )
-        free(eth_dst);
+        snort_free(eth_dst);
 
     if ( var_list )
         FreeVarList(var_list);
@@ -236,7 +223,7 @@ SnortConfig::~SnortConfig()
     delete policy_map;
     InspectorManager::delete_config(this);
 
-    free(state);
+    snort_free(state);
 
     delete thread_config;
 
@@ -248,6 +235,8 @@ SnortConfig::~SnortConfig()
     delete latency;
 
     delete memory;
+
+    delete daq_config;
 
 #ifdef INTEL_SOFT_CPM
     IntelPmRelease(ipm_handles);
@@ -353,9 +342,6 @@ void SnortConfig::merge(SnortConfig* cmd_line)
     if ( !cmd_line->bpf_filter.empty() )
         bpf_filter = cmd_line->bpf_filter;
 
-    if (cmd_line->pkt_snaplen != -1)
-        pkt_snaplen = cmd_line->pkt_snaplen;
-
     if (cmd_line->pkt_cnt != 0)
         pkt_cnt = cmd_line->pkt_cnt;
 
@@ -377,33 +363,11 @@ void SnortConfig::merge(SnortConfig* cmd_line)
         chroot_dir = cmd_line->chroot_dir;
     }
 
-    if ( cmd_line->daq_type.size() )
-        daq_type = cmd_line->daq_type;
-
-    if ( cmd_line->daq_mode.size() )
-        daq_mode = cmd_line->daq_mode;
-
     if ( cmd_line->dirty_pig )
         dirty_pig = cmd_line->dirty_pig;
 
-    if ( cmd_line->daq_vars )
-    {
-        /* Command line overwrites daq_vars */
-        if (daq_vars)
-            StringVector_Delete(daq_vars);
+    daq_config->overlay(cmd_line->daq_config);
 
-        daq_vars = StringVector_New();
-        StringVector_AddVector(daq_vars, cmd_line->daq_vars);
-    }
-    if ( cmd_line->daq_dirs )
-    {
-        /* Command line overwrites daq_dirs */
-        if (daq_dirs)
-            StringVector_Delete(daq_dirs);
-
-        daq_dirs = StringVector_New();
-        StringVector_AddVector(daq_dirs, cmd_line->daq_dirs);
-    }
     if (cmd_line->mpls_stack_depth != DEFAULT_LABELCHAIN_LENGTH)
         mpls_stack_depth = cmd_line->mpls_stack_depth;
 
@@ -421,7 +385,7 @@ void SnortConfig::merge(SnortConfig* cmd_line)
     if (cmd_line->run_flags & RUN_FLAG__PROCESS_ALL_EVENTS)
         event_queue_config->process_all_events = 1;
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     if ( cmd_line->remote_control )
         remote_control = cmd_line->remote_control;
 #endif
@@ -430,9 +394,9 @@ void SnortConfig::merge(SnortConfig* cmd_line)
     // FIXIT-M should cmd_line use the same var list / table?
     var_list = NULL;
 
-    free(state);
+    snort_free(state);
     num_slots = ThreadConfig::get_instance_max();
-    state = (SnortState*)SnortAlloc(sizeof(SnortState)*num_slots);
+    state = (SnortState*)snort_calloc(num_slots, sizeof(SnortState));
 }
 
 bool SnortConfig::verify()
@@ -517,7 +481,7 @@ bool SnortConfig::verify()
         return false;
     }
 
-    if (snort_conf->pkt_snaplen != pkt_snaplen)
+    if (snort_conf->daq_config->mru_size != daq_config->mru_size)
     {
         ErrorMessage("Snort Reload: Changing the packet snaplen "
             "configuration requires a restart.\n");

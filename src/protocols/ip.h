@@ -36,8 +36,9 @@
 
 struct Packet;
 
-// FIXIT-L : can I assume api is always valid?  i.e. if not ip4, then ipv6?
-//          or if not ip4, also make sure its not ip6
+// FIXIT-L can I assume api is always valid?
+// i.e. if not ip4, then ipv6?
+// or if not ip4, also make sure its not ip6
 
 namespace ip
 {
@@ -123,7 +124,7 @@ public:
 
     uint16_t tos() const;
     uint8_t ttl() const;
-    uint8_t proto() const;
+    IpProtocol proto() const;
     uint16_t raw_len() const;
     uint8_t hlen() const;
     uint8_t ver() const;

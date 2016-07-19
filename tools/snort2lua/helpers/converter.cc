@@ -28,6 +28,7 @@
 #include "init_state.h"
 
 bool Converter::parse_includes = true;
+bool Converter::ohi_convert = false;
 bool Converter::convert_rules_mult_files = true;
 bool Converter::convert_conf_mult_files = true;
 
@@ -73,7 +74,7 @@ int Converter::parse_include_file(std::string input_file)
     if (!parse_includes)
         return 0;
 
-    // FIXIT get rid of any variables in the name
+    // FIXIT-L get rid of any variables in the name
 
     if (convert_conf_mult_files)
     {

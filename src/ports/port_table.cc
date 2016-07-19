@@ -41,7 +41,6 @@
 #include "detection/sfrim.h"
 #include "parser/parser.h"
 #include "utils/util.h"
-#include "utils/snort_bounds.h"
 #include "hash/sfhashfcn.h"
 
 #define PTBL_LRC_DEFAULT 10
@@ -67,9 +66,8 @@ static plx_t* plx_new(void* pv_array[], int n)
     if (!pv_array || n < 0)
         return NULL;
 
-    p = (plx_t*)SnortAlloc(sizeof(plx_t));
-
-    p->p = (void**)SnortAlloc(n * sizeof(void*));
+    p = (plx_t*)snort_calloc(sizeof(plx_t));
+    p->p = (void**)snort_calloc(n, sizeof(void*));
 
     p->n = n;
     for (i=0; i<n; i++)
@@ -86,8 +84,8 @@ static void plx_free(void* p)
     if ( !plx )
         return;
     if ( plx->p )
-        free(plx->p);
-    free(p);
+        snort_free(plx->p);
+    snort_free(p);
 }
 
 #ifdef DEBUG_MSGS
@@ -97,7 +95,7 @@ static void plx_print(plx_t* p)
         int i;
         DebugFormat(DEBUG_PORTLISTS, "plx-n=%d\n", p->n);
         for (i=0; i<p->n; i++)
-            DebugFormat(DEBUG_PORTLISTS, "plx[%d]=%lu\n", i, p->p[i]);
+            DebugFormat(DEBUG_PORTLISTS, "plx[%d]=%p\n", i, p->p[i]);
         );
 }
 
@@ -299,18 +297,18 @@ static PortObject2* _merge_N_pol(
     {
         for (i=1; i<pol_cnt; i++)
         {
-            DebugFormat(DEBUG_PORTLISTS,"*** %d rules in object %d\n",
+            DebugFormat(DEBUG_PORTLISTS,"*** %u rules in object %d\n",
                 ((PortObject*)pol[i])->rule_list->count,i);
             PortObjectAppendEx2(ponew, (PortObject*)pol[i]);
             DebugFormat(DEBUG_PORTLISTS,
-                "*** merged port-object[%d], %d rules\n",
+                "*** merged port-object[%d], %u rules\n",
                 i,ponew->rule_hash->count);
         }
         PortObjectNormalize( (PortObject*)ponew);
     }
 
     DebugFormat(DEBUG_PORTLISTS,
-        "*** merged %d port objects, %d rules\n",
+        "*** merged %d port objects, %u rules\n",
         pol_cnt,ponew->rule_hash->count);
     DebugMessage(DEBUG_PORTLISTS,"*** merged ponew - follows: \n");
     // PortObjectPrint2(ponew);
@@ -474,9 +472,9 @@ static PortObject2* PortTableCompileMergePortObjectList2(
 
     DEBUG_WRAP(
         for (i=0; i<nsmall; i++)
-            DebugFormat(DEBUG_PORTLISTS, "posmall[%d]=%lu\n",i,posmall[i]);
+            DebugFormat(DEBUG_PORTLISTS, "posmall[%d]=%p\n",i,posmall[i]);
         for (i=0; i<nlarge; i++)
-            DebugFormat(DEBUG_PORTLISTS, "polarge[%d]=%lu\n",i,polarge[i]);
+            DebugFormat(DEBUG_PORTLISTS, "polarge[%d]=%p\n",i,polarge[i]);
         );
 
     /*
@@ -760,7 +758,7 @@ static int PortTableCompileMergePortObjects(PortTable* p)
         }
 
         /* free the original list */
-        sflist_free_all(po->item_list, free);
+        sflist_free_all(po->item_list, snort_free);
 
         /* set the new list - this is a list of port items for this port object */
         po->item_list = plist;
@@ -883,18 +881,14 @@ static int PortTableConsistencyCheck(PortTable* p)
 /*
     Create a new table
 */
-PortTable* PortTableNew(void)
+PortTable* PortTableNew()
 {
-    PortTable* p = (PortTable*)calloc(1,sizeof(PortTable));
-
-    if (!p)
-        return 0;
-
+    PortTable* p = (PortTable*)snort_calloc(sizeof(PortTable));
     p->pt_polist = sflist_new();
 
     if (!p->pt_polist )
     {
-        free(p);
+        snort_free(p);
         return 0;
     }
 
@@ -935,7 +929,7 @@ void PortTableFree(PortTable* p)
         sfghash_delete(p->pt_mpxo_hash);
     }
 
-    free(p);
+    snort_free(p);
 }
 
 /*
@@ -979,16 +973,11 @@ int PortTableAddObject(PortTable* p, PortObject* po)
         pox =(PortObject*)sflist_next(&lpos) )
     {
         if ( pox == po )
-        {
-            /* already in list - just return */
-            return 0;
-        }
+            return 0;   // already in list - just return
     }
 
     /* Save the users port object, if not already in the list */
-    if ( sflist_add_tail(p->pt_polist,po) )
-        return -1;
-
+    sflist_add_tail(p->pt_polist,po);
     return 0;
 }
 
@@ -1006,9 +995,7 @@ int PortTableCompile(PortTable* p)
     *  If not using an optimized Table use the rule_index_map in parser.c
     */
     if ( !p->pt_optimize )
-    {
         return 0;
-    }
 
     DebugMessage(DEBUG_PORTLISTS,"#PortTableCompile: Compiling Port Array Lists\n");
 
@@ -1195,10 +1182,10 @@ void RuleListSortUniq(SF_LIST* rl)
     while (uniqElements != rl->count)
     {
         node = (int*)sflist_remove_tail (rl);
-        free(node);
+        snort_free(node);
     }
 
-    free(rlist);
+    snort_free(rlist);
 }
 
 /**Sort and make rule index in all port objects unique. Multiple policies may add

@@ -52,6 +52,7 @@ NHttpInspect::NHttpInspect(const NHttpParaList* params_) : params(params_)
     }
     NHttpTestManager::set_print_amount(params->print_amount);
     NHttpTestManager::set_print_hex(params->print_hex);
+    NHttpTestManager::set_show_pegs(params->show_pegs);
 #endif
 }
 
@@ -129,6 +130,8 @@ const Field& NHttpInspect::process(const uint8_t* data, const uint16_t dsize, Fl
         NHttpFlowData::nhttp_flow_id);
     assert(session_data != nullptr);
 
+    NHttpModule::increment_peg_counts(PEG_INSPECT);
+
     switch (session_data->section_type[source_id])
     {
     case SEC_REQUEST:
@@ -197,9 +200,9 @@ void NHttpInspect::clear(Packet* p)
 
     if (session_data == nullptr)
         return;
-    assert((p->packet_flags & PKT_FROM_CLIENT) || (p->packet_flags & PKT_FROM_SERVER));
-    assert(!((p->packet_flags & PKT_FROM_CLIENT) && (p->packet_flags & PKT_FROM_SERVER)));
-    SourceId source_id = (p->packet_flags & PKT_FROM_CLIENT) ? SRC_CLIENT : SRC_SERVER;
+    assert((p->is_from_client()) || (p->is_from_server()));
+    assert(!((p->is_from_client()) && (p->is_from_server())));
+    SourceId source_id = (p->is_from_client()) ? SRC_CLIENT : SRC_SERVER;
 
     if (session_data->transaction[source_id] == nullptr)
         return;
@@ -212,15 +215,15 @@ void NHttpInspect::clear(NHttpFlowData* session_data, SourceId source_id)
     latest_section = nullptr;
 
     // If current transaction is complete then we are done with it and should reclaim the space
-    if ((source_id == SRC_SERVER) && (session_data->type_expected[SRC_SERVER] == SEC_STATUS))
+    if ((source_id == SRC_SERVER) && (session_data->type_expected[SRC_SERVER] == SEC_STATUS) &&
+         session_data->transaction[SRC_SERVER]->final_response())
     {
-        delete session_data->transaction[SRC_SERVER];
+        NHttpTransaction::delete_transaction(session_data->transaction[SRC_SERVER]);
         session_data->transaction[SRC_SERVER] = nullptr;
     }
     else
     {
         // Get rid of most recent body section if present
-        delete session_data->transaction[source_id]->get_body();
         session_data->transaction[source_id]->set_body(nullptr);
     }
 }

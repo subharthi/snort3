@@ -14,9 +14,11 @@ network_inspectors.h
 #port_scan/libport_scan.a
 
 SUBDIRS = \
+appid \
 arp_spoof \
 binder \
 normalize \
+packet_capture \
 perf_monitor \
 port_scan \
 reputation

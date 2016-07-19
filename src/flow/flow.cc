@@ -23,6 +23,7 @@
 #include "config.h"
 #endif
 
+#include "flow/ha.h"
 #include "flow/session.h"
 #include "ips_options/ips_flowbits.h"
 #include "utils/bitop.h"
@@ -30,12 +31,14 @@
 #include "protocols/packet.h"
 #include "sfip/sf_ip.h"
 
-unsigned FlowData:: flow_id = 0;
+unsigned FlowData::flow_id = 0;
 
 FlowData::FlowData(unsigned u, Inspector* ph)
 {
     assert(u > 0);
-    id = u;  handler = ph;
+    id = u;
+    handler = ph;
+    prev = next = nullptr;
     if ( handler )
         handler->add_ref();
 }
@@ -54,12 +57,18 @@ Flow::Flow()
 Flow::~Flow()
 { }
 
-void Flow::init(PktType proto)
+void Flow::init(PktType type)
 {
-    protocol = proto;
+    pkt_type = type;
 
     // FIXIT-M getFlowbitSizeInBytes() should be attribute of ??? (or eliminate)
     bitop = new BitOp(getFlowbitSizeInBytes());
+
+    if ( HighAvailabilityManager::active() )
+    {
+        ha_state = new FlowHAState;
+        previous_ssn_state = ssn_state;
+    }
 }
 
 void Flow::term()
@@ -83,6 +92,9 @@ void Flow::term()
 
     if ( bitop )
         delete bitop;
+
+    if ( ha_state )
+        delete ha_state;
 }
 
 void Flow::reset(bool do_cleanup)
@@ -123,11 +135,14 @@ void Flow::reset(bool do_cleanup)
     memset((uint8_t*)this+offset, 0, sizeof(Flow)-offset);
 
     bitop->reset();
+
+    if ( ha_state )
+        ha_state->reset();
 }
 
-void Flow::restart(bool freeAppData)
+void Flow::restart(bool free_flow_data)
 {
-    if ( freeAppData )
+    if ( free_flow_data )
         free_application_data();
 
     bitop->reset();
@@ -137,11 +152,12 @@ void Flow::restart(bool freeAppData)
 
     session_state = STREAM_STATE_NONE;
     expire_time = 0;
+    previous_ssn_state = ssn_state;
 }
 
-void Flow::clear(bool freeAppData)
+void Flow::clear(bool free_flow_data)
 {
-    restart(freeAppData);
+    restart(free_flow_data);
     set_state(SETUP);
 
     if ( ssn_client )
@@ -379,8 +395,7 @@ void Flow::set_ttl(Packet* p, bool client)
      */
     if (outer_ip_api.is_ip())
     {
-        // FIXIT-L!! -- Do we want more than just the outermost
-        //            and innermost ttl()?
+        // FIXIT-L do we want more than just the outermost and innermost ttl()?
         outer_ttl = outer_ip_api.ttl();
         inner_ttl = p->ptrs.ip_api.ttl();
     }

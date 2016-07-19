@@ -71,6 +71,7 @@ using namespace std;
 #include "helpers/directory.h"
 #include "helpers/markup.h"
 #include "parser/parser.h"
+#include "file_api/file_service.h"
 
 #if defined(LINUX)
 #define lib_pattern "*.so"
@@ -165,8 +166,7 @@ struct RefCount
 
     RefCount() { count = 0; }
 
-    // FIXIT-L fails on fatal error
-    //~RefCount() { assert(!count); };
+    //~RefCount() { assert(!count); }; // FIXIT-L fails on fatal error
 };
 
 typedef map<void*, RefCount> RefMap;
@@ -412,6 +412,7 @@ void PluginManager::load_plugins(const std::string& paths)
     load_list(search_engines);
     load_list(loggers);
     load_list(connectors);
+    load_list(file_inspectors);
 #ifdef PIGLET
     load_list(piglets);
 #endif

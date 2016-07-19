@@ -22,7 +22,7 @@
 *
 *   Simple list, queue, and dictionary implementations
 *   ( most of these implementations are list based - not performance monsters,
-*     and they all use alloc via s_alloc/s_free )
+*     and they all use snort_alloc via s_alloc/s_free )
 *
 *   11/05/2005 - man - Added sflist_firstx() and sflist_nextx() with user
 *   provided SF_NODE inputs for tracking the list position.  This allows
@@ -36,14 +36,14 @@
 #include <string.h>
 
 #include "main/snort_types.h"
+#include "utils/util.h"
 
 /*
 *  private alloc
 */
 static void* s_alloc(size_t n)
 {
-    void* p = (void*)calloc(1,n);
-    return p;
+    return snort_calloc(n);
 }
 
 /*
@@ -52,7 +52,7 @@ static void* s_alloc(size_t n)
 static void s_free(void* p)
 {
     if ( p )
-        free(p);
+        snort_free(p);
 }
 
 /*
@@ -67,16 +67,15 @@ void sflist_init(SF_LIST* s)
 /*
 *    NEW
 */
-SF_LIST* sflist_new(void)
+SF_LIST* sflist_new()
 {
     SF_LIST* s;
     s = (SF_LIST*)s_alloc(sizeof(SF_LIST) );
-    if ( s )
-        sflist_init(s);
+    sflist_init(s);
     return s;
 }
 
-SF_QUEUE* sfqueue_new(void)
+SF_QUEUE* sfqueue_new()
 {
     return (SF_QUEUE*)sflist_new();
 }
@@ -84,35 +83,26 @@ SF_QUEUE* sfqueue_new(void)
 /*
 *  Add-before Item
 */
-int sflist_add_before(SF_LIST* s, SF_LNODE* lnode, NODE_DATA ndata)
+void sflist_add_before(SF_LIST* s, SF_LNODE* lnode, NODE_DATA ndata)
 {
     SF_LNODE* q;
 
-    if ( !lnode )
-        return 0;
-
-    /* Add to head of list */
-    if ( s->head == lnode )
+    if ( lnode )
     {
-        return sflist_add_head (s, ndata);
-    }
-    else
-    {
-        q = (SF_LNODE*)s_alloc (sizeof (SF_LNODE) );
-        if ( !q )
+        /* Add to head of list */
+        if ( s->head == lnode )
+            sflist_add_head (s, ndata);
+        else
         {
-            return -1;
+            q = (SF_LNODE*)s_alloc (sizeof (SF_LNODE) );
+            q->ndata = (NODE_DATA)ndata;
+            q->next = lnode;
+            q->prev = lnode->prev;
+            lnode->prev->next = q;
+            lnode->prev       = q;
+            s->count++;
         }
-        q->ndata = (NODE_DATA)ndata;
-
-        q->next = lnode;
-        q->prev = lnode->prev;
-        lnode->prev->next = q;
-        lnode->prev       = q;
     }
-    s->count++;
-
-    return 0;
 }
 
 /*
@@ -121,14 +111,12 @@ int sflist_add_before(SF_LIST* s, SF_LNODE* lnode, NODE_DATA ndata)
 /*
 *  Add-Head Item
 */
-int sflist_add_head(SF_LIST* s, NODE_DATA ndata)
+void sflist_add_head(SF_LIST* s, NODE_DATA ndata)
 {
     SF_LNODE* q;
     if (!s->head)
     {
         q = s->tail = s->head = (SF_LNODE*)s_alloc (sizeof (SF_LNODE));
-        if (!q)
-            return -1;
         q->ndata = (NODE_DATA)ndata;
         q->next = 0;
         q->prev = 0;
@@ -136,8 +124,6 @@ int sflist_add_head(SF_LIST* s, NODE_DATA ndata)
     else
     {
         q = (SF_LNODE*)s_alloc (sizeof (SF_LNODE));
-        if (!q)
-            return -1;
         q->ndata = ndata;
         q->next = s->head;
         q->prev = 0;
@@ -145,21 +131,17 @@ int sflist_add_head(SF_LIST* s, NODE_DATA ndata)
         s->head = q;
     }
     s->count++;
-
-    return 0;
 }
 
 /*
 *  Add-Tail Item
 */
-int sflist_add_tail(SF_LIST* s, NODE_DATA ndata)
+void sflist_add_tail(SF_LIST* s, NODE_DATA ndata)
 {
     SF_LNODE* q;
     if (!s->head)
     {
         q = s->tail = s->head = (SF_LNODE*)s_alloc (sizeof (SF_LNODE));
-        if (!q)
-            return -1;
         q->ndata = (NODE_DATA)ndata;
         q->next = 0;
         q->prev = 0;
@@ -167,8 +149,6 @@ int sflist_add_tail(SF_LIST* s, NODE_DATA ndata)
     else
     {
         q = (SF_LNODE*)s_alloc (sizeof (SF_LNODE));
-        if (!q)
-            return -1;
         q->ndata = ndata;
         q->next = 0;
         q->prev = s->tail;
@@ -176,13 +156,11 @@ int sflist_add_tail(SF_LIST* s, NODE_DATA ndata)
         s->tail = q;
     }
     s->count++;
-
-    return 0;
 }
 
-int sfqueue_add(SF_QUEUE* s, NODE_DATA ndata)
+void sfqueue_add(SF_QUEUE* s, NODE_DATA ndata)
 {
-    return sflist_add_tail (s, ndata);
+    sflist_add_tail (s, ndata);
 }
 
 /*
@@ -197,7 +175,6 @@ NODE_DATA sflist_first(SF_LIST* s, SF_LNODE** v)
     }
 
     *v = s->head;
-
     if ( *v )
         return (*v)->ndata;
 

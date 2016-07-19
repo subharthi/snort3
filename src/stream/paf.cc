@@ -36,7 +36,6 @@
 #include "main/snort_debug.h"
 #include "stream/stream.h"
 #include "stream/stream_api.h"
-#include "utils/snort_bounds.h"
 
 //--------------------------------------------------------------------
 // private state
@@ -111,8 +110,8 @@ static uint32_t paf_flush (
     // such as exceeding s5_pkt->max_dsize.  the actual amount
     // flushed would ideally be applied to ps->fpt later.  for
     // now we try to circumvent such cases so we track correctly.
-    // FIXIT-L max_dsize should no longer be exceeded since it excludes
-    // headers.
+    //
+    // FIXIT-L max_dsize should no longer be exceeded since it excludes headers.
     case FT_MAX:
         at = s5_len;
         if ( ps->fpt > s5_len )

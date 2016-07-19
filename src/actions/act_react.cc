@@ -130,13 +130,13 @@ ReactAction::~ReactAction()
 {
     if ( s_page )
     {
-        free(s_page);
+        snort_free(s_page);
         s_page = nullptr;
     }
     if (config->resp_buf)
-        free(config->resp_buf);
+        snort_free(config->resp_buf);
 
-    free(config);
+    snort_free(config);
 }
 
 void ReactAction::exec(Packet* p)
@@ -149,7 +149,7 @@ void ReactAction::exec(Packet* p)
 
 void ReactAction::send(Packet* p)
 {
-    EncodeFlags df = (p->packet_flags & PKT_FROM_SERVER) ? ENC_FLAG_FWD : 0;
+    EncodeFlags df = (p->is_from_server()) ? ENC_FLAG_FWD : 0;
     EncodeFlags sent = config->buf_len;
 
     if ( p->packet_flags & PKT_STREAM_EST )
@@ -182,7 +182,7 @@ static bool react_getpage(const char* file)
         return false;
     }
 
-    s_page = (char*)SnortAlloc(fs.st_size+1);
+    s_page = (char*)snort_calloc(fs.st_size+1);
     fd = fopen(file, "r");
 
     if ( !fd )
@@ -239,7 +239,7 @@ static void react_config(ReactData* rd)
     head_len = snprintf(&dummy, 1, head, body_len);
     total_len = head_len + body_len + 1;
 
-    rd->resp_buf = (char*)SnortAlloc(total_len);
+    rd->resp_buf = (char*)snort_calloc(total_len);
 
     SnortSnprintf((char*)rd->resp_buf, head_len+1, head, body_len);
     SnortSnprintf((char*)rd->resp_buf+head_len, body_len+1, body, msg);
@@ -314,7 +314,7 @@ static void mod_dtor(Module* m)
 
 static IpsAction* react_ctor(Module* p)
 {
-    ReactData* rd = (ReactData*)SnortAlloc(sizeof(*rd));
+    ReactData* rd = (ReactData*)snort_calloc(sizeof(*rd));
 
     ReactModule* m = (ReactModule*)p;
     rd->rule_msg = m->msg;

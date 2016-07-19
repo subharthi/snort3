@@ -101,7 +101,6 @@ using namespace std;
 #include "protocols/packet.h"
 #include "parser/parser.h"
 #include "utils/util.h"
-#include "utils/snort_bounds.h"
 #include "profiler/profiler.h"
 #include "hash/sfhashfcn.h"
 #include "detection/treenodes.h"
@@ -138,8 +137,7 @@ typedef struct _ByteTestData
 {
     uint32_t bytes_to_compare;
     uint32_t cmp_value;
-    // FIXIT-L should be an enum
-    uint32_t opcode;
+    uint32_t opcode;  // FIXIT-L should be an enum
     int32_t offset;
     uint8_t not_flag;
     uint8_t relative_flag;

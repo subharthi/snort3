@@ -42,12 +42,15 @@ class Snort
 public:
     static SnortConfig* get_reload_config(const char* fname);
     static void setup(int argc, char* argv[]);
+    static void drop_privileges();
     static void cleanup();
 
     static bool is_starting();
     static bool is_reloading();
+    static bool has_dropped_privileges();
 
-    static void thread_init(const char* intf);
+    static bool thread_init_privileged(const char* intf);
+    static void thread_init_unprivileged();
     static void thread_term();
 
     static void thread_idle();
@@ -59,20 +62,19 @@ public:
     static DAQ_Verdict process_packet(
         Packet*, const DAQ_PktHdr_t*, const uint8_t* pkt, bool is_frag=false);
 
-    static DAQ_Verdict fail_open(void*, const DAQ_PktHdr_t*, const uint8_t*);
     static DAQ_Verdict packet_callback(void*, const DAQ_PktHdr_t*, const uint8_t*);
 
     static void set_main_hook(MainHook_f);
 
 private:
     static void init(int, char**);
-    static void unprivileged_init();
     static void term();
     static void clean_exit(int);
 
 private:
     static bool initializing;
     static bool reloading;
+    static bool privileges_dropped;
 };
 
 #endif

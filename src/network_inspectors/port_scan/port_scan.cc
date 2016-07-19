@@ -54,7 +54,6 @@
 
 #include "ipobj.h"
 #include "main/snort_config.h"
-#include "main/analyzer.h"
 #include "managers/inspector_manager.h"
 #include "protocols/packet_manager.h"
 #include "protocols/packet.h"
@@ -69,7 +68,6 @@
 #include "detection/detect.h"
 
 #define PROTO_BUFFER_SIZE 256
-#define IPPROTO_PS 0xFF
 
 static THREAD_LOCAL Packet* g_tmp_pkt = NULL;
 static THREAD_LOCAL FILE* g_logfile = NULL;
@@ -311,7 +309,7 @@ static int MakeOpenPortInfo(
         return -1;
 
     SnortSnprintf((char*)buffer, PROTO_BUFFER_SIZE,
-        "Open Port: %u\n", *((unsigned short*)user));
+        "Open Port: %hu\n", *((unsigned short*)user));
 
     dsize = SnortStrnlen((const char*)buffer, PROTO_BUFFER_SIZE);
     *total_size += dsize;
@@ -357,16 +355,16 @@ static int MakePortscanPkt(PS_PKT* ps_pkt, PS_PROTO* proto, int proto_type,
     switch (proto_type)
     {
     case PS_PROTO_TCP:
-        g_tmp_pkt->ps_proto = IPPROTO_TCP;
+        g_tmp_pkt->ps_proto = IpProtocol::TCP;
         break;
     case PS_PROTO_UDP:
-        g_tmp_pkt->ps_proto = IPPROTO_UDP;
+        g_tmp_pkt->ps_proto = IpProtocol::UDP;
         break;
     case PS_PROTO_ICMP:
-        g_tmp_pkt->ps_proto = IPPROTO_ICMP;
+        g_tmp_pkt->ps_proto = IpProtocol::ICMPV4;
         break;
     case PS_PROTO_IP:
-        g_tmp_pkt->ps_proto = IPPROTO_IP;
+        g_tmp_pkt->ps_proto = IpProtocol::IP;
         break;
     case PS_PROTO_OPEN_PORT:
         g_tmp_pkt->ps_proto = p->get_ip_proto_next();
@@ -377,12 +375,12 @@ static int MakePortscanPkt(PS_PKT* ps_pkt, PS_PROTO* proto, int proto_type,
 
     if (g_tmp_pkt->is_ip4())
     {
-        ((IP4Hdr*)g_tmp_pkt->ptrs.ip_api.get_ip4h())->set_proto(IPPROTO_PS);
+        ((IP4Hdr*)g_tmp_pkt->ptrs.ip_api.get_ip4h())->set_proto(IpProtocol::PORT_SCAN);
     }
     else
     {
         // since ip_api.is_ip() && !ip4h, this is automatically ip6h
-        ((ip::IP6Hdr*)g_tmp_pkt->ptrs.ip_api.get_ip6h())->set_proto(IPPROTO_PS);
+        ((ip::IP6Hdr*)g_tmp_pkt->ptrs.ip_api.get_ip6h())->set_proto(IpProtocol::PORT_SCAN);
     }
 
     switch (proto_type)
@@ -411,8 +409,7 @@ static int MakePortscanPkt(PS_PKT* ps_pkt, PS_PROTO* proto, int proto_type,
     */
     PacketManager::encode_update(g_tmp_pkt);
 
-    // FIXIT-L: IP4 is gauranteed to have been set in update().  Is IP6()
-    //        also gauranteed?
+    // FIXIT-L IP4 is gauranteed to have been set in update().  Is IP6() also gauranteed?
     if (g_tmp_pkt->ptrs.ip_api.is_ip6())
         ((ip::IP6Hdr*)g_tmp_pkt->ptrs.ip_api.get_ip6h())->set_len((uint16_t)ip_size);
 
@@ -876,7 +873,7 @@ bool PortScan::configure(SnortConfig* sc)
 
 void PortScan::tinit()
 {
-    g_tmp_pkt = PacketManager::encode_new();
+    g_tmp_pkt = new Packet;
     ps_init_hash(config->common->memcap);
 
     if ( !config->logfile )
@@ -901,8 +898,8 @@ void PortScan::tterm()
         g_logfile = nullptr;
     }
     ps_cleanup();
-    PacketManager::encode_delete(g_tmp_pkt);
-    g_tmp_pkt = NULL;
+    delete g_tmp_pkt;
+    g_tmp_pkt = nullptr;
 }
 
 void PortScan::show(SnortConfig*)

@@ -42,6 +42,7 @@
 #include "main/snort_config.h"
 #include "hash/hashes.h"
 #include "utils/util.h"
+#include "utils/stats.h"
 
 FileMemPool* file_mempool = nullptr;
 File_Capture_Stats file_capture_stats;
@@ -85,12 +86,11 @@ void FileCapture::init_mempool(int64_t max_file_mem, int64_t block_len)
 
     int max_files = max_file_mem_in_bytes / block_size;
 
-    file_mempool = (FileMemPool*)SnortAlloc(sizeof(FileMemPool));
+    file_mempool = (FileMemPool*)snort_calloc(sizeof(FileMemPool));
 
-    if ((!file_mempool)||
-        (file_mempool_init(file_mempool, max_files, block_size) != 0))
+    if ( file_mempool_init(file_mempool, max_files, block_size) != 0 )
     {
-        FatalError("File capture: Could not allocate file buffer mempool.\n");
+        FatalError("File capture: Could not initialize file buffer mempool.\n");
     }
 }
 
@@ -173,7 +173,7 @@ inline FileCaptureState FileCapture::save_to_file_buffer(FileMemPool* file_mempo
     if ( data_size + (int64_t)file_size > max_size)
     {
         FILE_DEBUG_MSGS("Exceeding max file capture size!\n");
-        file_capture_stats.file_size_exceeded++;
+        file_capture_stats.file_size_max++;
         capture_state = FILE_CAPTURE_MAX;
         return FILE_CAPTURE_MAX;
     }
@@ -431,6 +431,8 @@ void FileCapture::release_file()
         fileblock = fileblock->next;
         file_capture_stats.file_buffers_released_total++;
     }
+
+    head = last = nullptr;
 }
 
 /*
@@ -520,18 +522,14 @@ void FileCapture::store_file(FileContext* file)
 }
 
 /*Log file capture mempool usage*/
-void FileCapture::print_mem_usage(void)
+void FileCapture::print_mem_usage()
 {
     if (file_mempool)
     {
-        LogMessage("Maximum buffers can allocate:      " FMTu64("-10") " \n",
-            file_mempool->total);
-        LogMessage("Number of buffers in use:          " FMTu64("-10") " \n",
-            file_mempool_allocated(file_mempool));
-        LogMessage("Number of buffers in free list:    " FMTu64("-10") " \n",
-            file_mempool_freed(file_mempool));
-        LogMessage("Number of buffers in release list: " FMTu64("-10") " \n",
-            file_mempool_released(file_mempool));
+        LogCount("Max buffers can allocate", file_mempool->total);
+        LogCount("Buffers in use", file_mempool_allocated(file_mempool));
+        LogCount("Buffers in free list", file_mempool_freed(file_mempool));
+        LogCount("Buffers in release list", file_mempool_released(file_mempool));
     }
 }
 
@@ -539,11 +537,11 @@ void FileCapture::print_mem_usage(void)
  *  Release all file capture memory etc,
  *  this must be called when snort exits
  */
-void FileCapture::exit(void)
+void FileCapture::exit()
 {
     if (file_mempool_destroy(file_mempool) == 0)
     {
-        free(file_mempool);
+        snort_free(file_mempool);
         file_mempool = nullptr;
     }
 }

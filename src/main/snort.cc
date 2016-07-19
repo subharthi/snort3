@@ -17,101 +17,78 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //--------------------------------------------------------------------------
 
-#include "snort_config.h"
+#include "snort.h"
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
 
-#ifdef HAVE_MALLOC_TRIM
-#include <malloc.h>
-#endif
-
-#include <mutex>
-#include <string>
-using namespace std;
-
 #include <assert.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <setjmp.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <syslog.h>
 #include <ctype.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <fcntl.h>
 #include <netdb.h>
+#include <string.h>
+#include <syslog.h>
+#include <time.h>
+#include <unistd.h>
 
-#if !defined(CATCH_SEGV)
-# include <sys/resource.h>
-#endif
+#include <netinet/in.h>
+#include <sys/stat.h>
 
-#include <thread>
-
-#include "main.h"
-#include "build.h"
-#include "snort_config.h"
-#include "snort_debug.h"
-#include "thread_config.h"
+#include "detection/detect.h"
+#include "detection/detection_util.h"
+#include "detection/fp_config.h"
+#include "detection/fp_detect.h"
+#include "detection/tag.h"
+#include "file_api/file_service.h"
+#include "filters/detection_filter.h"
+#include "filters/rate_filter.h"
+#include "filters/sfthreshold.h"
+#include "flow/flow_control.h"
+#include "flow/ha.h"
+#include "framework/mpse.h"
 #include "helpers/process.h"
-#include "protocols/packet.h"
-#include "protocols/packet_manager.h"
+#include "host_tracker/host_cache.h"
+#include "ips_options/ips_flowbits.h"
+#include "latency/packet_latency.h"
+#include "latency/rule_latency.h"
+#include "managers/action_manager.h"
+#include "managers/codec_manager.h"
+#include "managers/inspector_manager.h"
+#include "managers/ips_manager.h"
+#include "managers/event_manager.h"
+#include "managers/module_manager.h"
+#include "managers/mpse_manager.h"
+#include "managers/plugin_manager.h"
+#include "managers/script_manager.h"
 #include "packet_io/sfdaq.h"
 #include "packet_io/active.h"
 #include "packet_io/trough.h"
-#include "utils/util.h"
-#include "parser/parser.h"
-#include "parser/config_file.h"
 #include "parser/cmd_line.h"
-#include "detection/tag.h"
-#include "detection/detect.h"
-#include "detection/fp_config.h"
-#include "detection/fp_create.h"
-#include "detection/fp_detect.h"
-#include "detection/detection_util.h"
-#include "filters/sfthreshold.h"
-#include "filters/rate_filter.h"
-#include "filters/detection_filter.h"
-#include "time/packet_time.h"
+#include "parser/parser.h"
+#include "perf_monitor/perf_monitor.h"
 #include "profiler/profiler.h"
-#include "time/periodic.h"
-#include "ips_options/ips_flowbits.h"
-#include "events/event_queue.h"
-#include "framework/mpse.h"
-#include "managers/module_manager.h"
-#include "managers/plugin_manager.h"
-#include "managers/script_manager.h"
-#include "managers/event_manager.h"
-#include "managers/inspector_manager.h"
-#include "managers/ips_manager.h"
-#include "managers/mpse_manager.h"
-#include "managers/codec_manager.h"
-#include "managers/action_manager.h"
-#include "managers/connector_manager.h"
-#include "control/idle_processing.h"
-#include "file_api/file_service.h"
-#include "flow/flow_control.h"
-#include "flow/flow.h"
-#include "flow/ha.h"
+#include "protocols/packet.h"
+#include "protocols/packet_manager.h"
+#include "side_channel/side_channel.h"
 #include "stream/stream.h"
 #include "target_based/sftarget_reader.h"
-#include "host_tracker/host_cache.h"
-#include "perf_monitor/perf_monitor.h"
-#include "side_channel/side_channel.h"
+#include "time/packet_time.h"
+#include "time/periodic.h"
+#include "utils/util.h"
 
 #ifdef PIGLET
 #include "piglet/piglet.h"
 #include "piglet/piglet_manager.h"
 #endif
+
+#include "build.h"
+#include "main.h"
+#include "snort_config.h"
+#include "snort_debug.h"
+#include "thread_config.h"
+
+using namespace std;
 
 //-------------------------------------------------------------------------
 
@@ -211,9 +188,8 @@ static void show_source(const char* pcap)
     else
         fprintf(stdout, "%s", "\n");
 
-    fprintf(stdout,
-        "Reading network traffic from \"%s\" with snaplen = %u\n",
-        pcap, DAQ_GetSnapLen());
+    fprintf(stdout, "Reading network traffic from \"%s\" with snaplen = %u\n",
+        pcap, SFDAQ::get_snap_len());
 }
 
 //-------------------------------------------------------------------------
@@ -247,6 +223,7 @@ void Snort::init(int argc, char** argv)
 #endif
 
     SideChannelManager::pre_config_init();
+    HighAvailabilityManager::pre_config_init();
 
     ModuleManager::init();
     ScriptManager::load_scripts(snort_cmd_line_conf->script_paths);
@@ -316,8 +293,7 @@ void Snort::init(int argc, char** argv)
     /* Finish up the pcap list and put in the queues */
     Trough::setup();
 
-    // FIXIT-L stuff like this that is also done in snort_config.cc::VerifyReload()
-    // should be refactored
+    // FIXIT-L refactor stuff done here and in snort_config.cc::VerifyReload()
     if ( snort_conf->bpf_filter.empty() && !snort_conf->bpf_file.empty() )
         snort_conf->bpf_filter = read_infile("bpf_file", snort_conf->bpf_file.c_str());
 
@@ -345,11 +321,12 @@ void Snort::init(int argc, char** argv)
 //
 // FIXIT-L breaks DAQ_New()/Start() because packet threads won't be root when
 // opening iface
-void Snort::unprivileged_init()
+void Snort::drop_privileges()
 {
     if ( SnortConfig::create_pid_file() )
         CreatePidFile(snort_main_thread_pid);
 
+    /* FIXIT-M X - I have no idea if the chroot functionality actually works. */
     /* Drop the Chrooted Settings */
     if ( !snort_conf->chroot_dir.empty() )
         SetChroot(snort_conf->chroot_dir, snort_conf->log_dir);
@@ -358,6 +335,7 @@ void Snort::unprivileged_init()
     SetUidGid(SnortConfig::get_uid(), SnortConfig::get_gid());
 
     initializing = false;
+    privileges_dropped = true;
 }
 
 //-------------------------------------------------------------------------
@@ -430,8 +408,10 @@ void Snort::term()
         snort_conf = NULL;
     }
     CleanupProtoNames();
+    SideChannelManager::term();
     ModuleManager::term();
     PluginManager::release_plugins();
+    ScriptManager::release_scripts();
 }
 
 void Snort::clean_exit(int)
@@ -463,6 +443,7 @@ void Snort::clean_exit(int)
 
 bool Snort::initializing = true;
 bool Snort::reloading = false;
+bool Snort::privileges_dropped = false;
 
 bool Snort::is_starting()
 { return initializing; }
@@ -470,17 +451,22 @@ bool Snort::is_starting()
 bool Snort::is_reloading()
 { return reloading; }
 
+bool Snort::has_dropped_privileges()
+{ return privileges_dropped; }
+
 void Snort::set_main_hook(MainHook_f f)
 { main_hook = f; }
 
 void Snort::setup(int argc, char* argv[])
 {
+    set_main_thread();
+
     OpenLogger();
 
     init(argc, argv);
 
     LogMessage("%s\n", LOG_DIV);
-    DAQ_Init(snort_conf);
+    SFDAQ::init(snort_conf);
 
     if ( SnortConfig::daemon_mode() )
         daemonize();
@@ -490,14 +476,17 @@ void Snort::setup(int argc, char* argv[])
 
     /* Change groups */
     InitGroups(SnortConfig::get_uid(), SnortConfig::get_gid());
-    unprivileged_init();
 
     set_quick_exit(false);
+
+    TimeStart();
 }
 
 void Snort::cleanup()
 {
-    DAQ_Term();
+    TimeStop();
+
+    SFDAQ::term();
 
     if ( !SnortConfig::test_mode() )  // FIXIT-M ideally the check is in one place
         PrintStatistics();
@@ -582,7 +571,7 @@ void Snort::capture_packet()
 {
     if ( snort_main_thread_pid == gettid() )
     {
-        // FIXIT-L.  main thread crashed.  Do anything?
+        // FIXIT-L main thread crashed.  Do anything?
     }
     else
     {
@@ -601,13 +590,6 @@ void Snort::capture_packet()
     }
 }
 
-DAQ_Verdict Snort::fail_open(
-    void*, const DAQ_PktHdr_t*, const uint8_t*)
-{
-    aux_counts.total_fail_open++;
-    return DAQ_VERDICT_PASS;
-}
-
 void Snort::thread_idle()
 {
     if ( flow_con )
@@ -621,17 +603,32 @@ void Snort::thread_rotate()
     SetRotatePerfFileFlag();
 }
 
-void Snort::thread_init(const char* intf)
+/*
+ * Perform all packet thread initialization actions that need to be taken with escalated privileges
+ * prior to starting the DAQ module.
+ */
+bool Snort::thread_init_privileged(const char* intf)
 {
     show_source(intf);
 
     snort_conf->thread_config->implement_thread_affinity(STHREAD_TYPE_PACKET, get_instance_id());
 
     // FIXIT-M the start-up sequence is a little off due to dropping privs
-    if ( !DAQ_New(snort_conf, intf) )
-        DAQ_Start();
+    SFDAQInstance *daq_instance = new SFDAQInstance(intf);
+    SFDAQ::set_local_instance(daq_instance);
+    if (!daq_instance->configure(snort_conf))
+        return false;
 
-    s_packet = PacketManager::encode_new(false);
+    return true;
+}
+
+/*
+ * Perform all packet thread initialization actions that can be taken with dropped privileges
+ * and/or must be called after the DAQ module has been started.
+ */
+void Snort::thread_init_unprivileged()
+{
+    s_packet = new Packet(false);
     CodecManager::thread_init(snort_conf);
 
     // this depends on instantiated daq capabilities
@@ -650,9 +647,10 @@ void Snort::thread_init(const char* intf)
     EventManager::open_outputs();
     IpsManager::setup_options();
     ActionManager::thread_init(snort_conf);
-    InspectorManager::thread_init(snort_conf);
     SideChannelManager::thread_init();
-    HighAvailabilityManager::thread_init();
+    HighAvailabilityManager::thread_init(); // must be before InspectorManager::thread_init();
+    InspectorManager::thread_init(snort_conf);
+    HighAvailabilityManager::process_receive(); // in case there are HA messages waiting, process them first
 }
 
 void Snort::thread_term()
@@ -667,19 +665,23 @@ void Snort::thread_term()
     IpsManager::clear_options();
     EventManager::close_outputs();
     CodecManager::thread_term();
-    SideChannelManager::thread_term();
     HighAvailabilityManager::thread_term();
+    SideChannelManager::thread_term();
 
     if ( s_packet )
     {
-        PacketManager::encode_delete(s_packet);
+        delete s_packet;
         s_packet = nullptr;
     }
 
-    if ( DAQ_WasStarted() )
-        DAQ_Stop();
+    SFDAQInstance *daq_instance = SFDAQ::get_local_instance();
+    if ( daq_instance->was_started() )
+        daq_instance->stop();
+    SFDAQ::set_local_instance(nullptr);
+    delete daq_instance;
 
-    DAQ_Delete();
+    PacketLatency::tterm();
+    RuleLatency::tterm();
 
     Profiler::consolidate_stats();
 
@@ -773,7 +775,7 @@ static DAQ_Verdict update_verdict(DAQ_Verdict verdict, int& inject)
     {
         // we never increase, only trim, but
         // daq doesn't support resizing wire packet
-        if ( !DAQ_Inject(s_packet->pkth, 0, s_packet->pkt, s_packet->pkth->pktlen) )
+        if ( !SFDAQ::inject(s_packet->pkth, 0, s_packet->pkt, s_packet->pkth->pktlen) )
         {
             inject = 1;
             verdict = DAQ_VERDICT_BLOCK;
@@ -831,9 +833,9 @@ DAQ_Verdict Snort::packet_callback(
     int inject = 0;
     verdict = update_verdict(verdict, inject);
 
-    //FIXIT-H move this to the appropriate struct
+    // FIXIT-H move this to the appropriate struct
     //perfBase->UpdateWireStats(pkthdr->caplen, Active::packet_was_dropped(), inject);
-    HighAvailabilityManager::process(s_packet->flow, pkthdr);
+    HighAvailabilityManager::process_update(s_packet->flow, pkthdr);
 
     Active::reset();
     PacketManager::encode_reset();
@@ -843,13 +845,15 @@ DAQ_Verdict Snort::packet_callback(
         flow_con->timeout_flows(4, pkthdr->ts.tv_sec);
     }
 
+    HighAvailabilityManager::process_receive();
+
     s_packet->pkth = nullptr;  // no longer avail upon sig segv
 
     if ( snort_conf->pkt_cnt && pc.total_from_daq >= snort_conf->pkt_cnt )
-        DAQ_BreakLoop(-1);
+        SFDAQ::break_loop(-1);
 
     else if ( break_time() )
-        DAQ_BreakLoop(0);
+        SFDAQ::break_loop(0);
 
     return verdict;
 }

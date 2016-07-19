@@ -108,13 +108,6 @@ check_type_size("size_t" SIZE_T)
 check_type_size("ssize_t" SSIZE_T)
 check_type_size("mode_t" MODE_T)
 
-set_if_false(UID_T uid_t)
-set_if_false(PID_T pid_t)
-set_if_false(SIZE_T size_t)
-set_if_false(SSIZE_T ssize_t)
-set_if_false(MODE_T mode_t)
-
-
 # vvvvvvvvv  INLINE TEST vvvvvvvvv
 
 # Taken and edited from www.cmake.org/wiki/CMakeTestInline
@@ -183,12 +176,6 @@ endif()
 
 
 # set library variables
-
-if (DEFINED OPENSSL_CRYPTO_LIBRARIES)
-    check_library_exists (${OPENSSL_CRYPTO_LIBRARIES} SHA256_Init "" HAVE_OPENSSL_SHA)
-    check_library_exists (${OPENSSL_CRYPTO_LIBRARIES} MD5_Init "" HAVE_OPENSSL_MD5)
-endif()
-
 if (HS_FOUND)
     check_library_exists (${HS_LIBRARIES} hs_scan "" HAVE_HYPERSCAN)
 endif()
@@ -197,31 +184,4 @@ if (DEFINED LIBLZMA_LIBRARIES)
     check_library_exists (${LIBLZMA_LIBRARIES} lzma_code "" HAVE_LZMA)
 endif()
 
-set_if_true (HAS_CXX11_FUNC HAVE___FUNCTION__)
 check_library_exists (pcap pcap_lib_version "${PCAP_LIBRARIES}" HAVE_PCAP_LIB_VERSION)
-check_library_exists (pcap pcap_lex_destroy "${PCAP_LIBRARIES}" HAVE_PCAP_LEX_DESTROY)
-
-set (CMAKE_REQUIRED_FLAGS ${CXX11_COMPILER_FLAGS})
-set (CMAKE_REQUIRED_INCLUDES ${DAQ_INCLUDE_DIR})
-set (CMAKE_REQUIRED_LIBRARIES ${DAQ_LIBRARIES})
-
-
-set (CMAKE_REQUIRED_FLAGS)
-set (CMAKE_REQUIRED_INCLUDES)
-set (CMAKE_REQUIRED_LIBRARIES)
-
-
-###############################################################################
-###############################################################################
-#
-#   Finally, create the config.h file
-
-
-configure_file (
-    "${PROJECT_SOURCE_DIR}/config.cmake.h.in"
-    "${PROJECT_BINARY_DIR}/config.h"
-    )
-
-add_definitions( -DHAVE_CONFIG_H )
-#set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_SOURCE_DIR}/config.h")
-

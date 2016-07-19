@@ -46,6 +46,7 @@ extern const char* tcp_event_names[];
 
 class TcpNormalizer;
 class TcpReassembler;
+class TcpSession;
 
 class TcpStreamTracker
 {
@@ -251,9 +252,8 @@ public:
 
     bool is_ack_valid(uint32_t cur)
     {
-        // FIXIT - do we need this check? we've alwasy seen something by the time
-        // we get here
-        /* If we haven't seen anything, ie, low & high are 0, return true */
+        // FIXIT-H do we need this check? we've always seen something by the time we get here
+        // If we haven't seen anything, ie, low & high are 0, return true
         if ( ( snd_una == 0 ) && ( snd_una == snd_nxt ) )
             return 1;
 
@@ -319,11 +319,14 @@ public:
         return rst_pkt_sent;
     }
 
-    virtual void init_tracker(void) =  0;
-    virtual void print(void) =  0;
-    virtual void init_flush_policy(void) =  0;
+    virtual void init_tcp_state() =  0;
+    virtual void init_toolbox() = 0;
+
+    virtual void print() =  0;
+    virtual void init_flush_policy() =  0;
     virtual void set_splitter(StreamSplitter* ss) =  0;
     virtual void set_splitter(const Flow* flow) =  0;
+    virtual void reset_splitter( void ) = 0;
 
     virtual void init_on_syn_sent(TcpSegmentDescriptor&) =  0;
     virtual void init_on_syn_recv(TcpSegmentDescriptor&) =  0;
@@ -340,7 +343,7 @@ public:
     virtual void update_tracker_ack_sent(TcpSegmentDescriptor& tsd) =  0;
     virtual bool update_on_3whs_ack(TcpSegmentDescriptor& tsd) =  0;
     virtual bool update_on_rst_recv(TcpSegmentDescriptor& tsd) =  0;
-    virtual void update_on_rst_sent(void) =  0;
+    virtual void update_on_rst_sent() =  0;
     virtual bool update_on_fin_recv(TcpSegmentDescriptor& tsd) =  0;
     virtual bool update_on_fin_sent(TcpSegmentDescriptor& tsd) =  0;
     virtual bool is_segment_seq_valid(TcpSegmentDescriptor& tsd) =  0;
@@ -367,8 +370,7 @@ public:
     uint32_t fin_final_seq = 0;
     bool rst_pkt_sent = false;
 
-// FIXIT - make these non-public
-
+// FIXIT-L make these non-public
 public:
     uint32_t r_nxt_ack = 0; /* next expected ack from remote side */
     uint32_t r_win_base = 0; /* remote side window base sequence number
@@ -377,6 +379,7 @@ public:
     StreamSplitter* splitter = nullptr;
     TcpNormalizer* normalizer = nullptr;
     TcpReassembler* reassembler = nullptr;
+    TcpSession* session = nullptr;
 
     uint32_t small_seg_count = 0;
     uint8_t alert_count = 0;
@@ -395,7 +398,7 @@ protected:
     uint8_t mac_addr[6] = { };
     bool mac_addr_valid = false;
 
-    // FIXIT - make this protected...
+    // FIXIT-L make this protected...
 
 public:
     uint16_t wscale; /* window scale setting */

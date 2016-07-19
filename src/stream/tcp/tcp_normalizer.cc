@@ -210,7 +210,7 @@ uint32_t TcpNormalizer::get_tcp_timestamp(TcpSegmentDescriptor& tsd, bool strip)
             if (!stripped)
             {
                 tsd.set_ts(extract_32bits(opt.data) );
-                DebugFormat(DEBUG_STREAM_STATE, "Found timestamp %lu\n", tsd.get_ts());
+                DebugFormat(DEBUG_STREAM_STATE, "Found timestamp %u\n", tsd.get_ts());
                 return TF_TSTAMP;
             }
         }
@@ -229,7 +229,7 @@ bool TcpNormalizer::validate_rst_seq_geq(TcpSegmentDescriptor& tsd)
         tsd.get_end_seq(), tracker->r_win_base, tsd.get_seg_seq(), tracker->r_nxt_ack +
         get_stream_window(tsd));
 
-    // FIXIT - check for r_win_base == 0 is hack for uninitialized r_win_base, fix this
+    // FIXIT-H check for r_win_base == 0 is hack for uninitialized r_win_base, fix this
     if ( ( tracker->r_nxt_ack == 0 ) || SEQ_GEQ(tsd.get_seg_seq(), tracker->r_nxt_ack) )
     {
         DebugMessage(DEBUG_STREAM_STATE, "rst is valid seq (>= next seq)!\n");
@@ -247,7 +247,7 @@ bool TcpNormalizer::validate_rst_end_seq_geq(TcpSegmentDescriptor& tsd)
         tsd.get_end_seq(), tracker->r_win_base, tsd.get_seg_seq(), tracker->r_nxt_ack +
         get_stream_window(tsd));
 
-    // FIXIT - check for r_win_base == 0 is hack for uninitialized r_win_base, fix this
+    // FIXIT-H check for r_win_base == 0 is hack for uninitialized r_win_base, fix this
     if ( tracker->r_win_base == 0 )
         return true;
 
@@ -272,7 +272,7 @@ bool TcpNormalizer::validate_rst_seq_eq(TcpSegmentDescriptor& tsd)
         tsd.get_end_seq(), tracker->r_win_base, tsd.get_seg_seq(), tracker->r_nxt_ack +
         get_stream_window(tsd));
 
-    // FIXIT - check for r_nxt_ack == 0 is hack for uninitialized r_nxt_ack, fix this
+    // FIXIT-H check for r_nxt_ack == 0 is hack for uninitialized r_nxt_ack, fix this
     if ( ( tracker->r_nxt_ack == 0 ) || SEQ_EQ(tsd.get_seg_seq(), tracker->r_nxt_ack) )
     {
         DebugMessage(DEBUG_STREAM_STATE, "rst is valid seq (next seq)!\n");
@@ -309,7 +309,7 @@ int TcpNormalizer::validate_paws_timestamp(TcpSegmentDescriptor& tsd)
     {
         /* this packet is from way too far into the future */
         DebugFormat(DEBUG_STREAM_STATE,
-            "packet PAWS timestamp way too far ahead of last packet %d %d...\n",
+            "packet PAWS timestamp way too far ahead of last packet %ld %u...\n",
             tsd.get_pkt()->pkth->ts.tv_sec, peer_tracker->get_ts_last_packet() );
         //inc_tcp_discards();
         ( ( TcpSession* )tsd.get_flow()->session )->tel.set_tcp_event(EVENT_BAD_TIMESTAMP);

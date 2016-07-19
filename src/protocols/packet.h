@@ -125,7 +125,12 @@ constexpr uint8_t DEFAULT_LAYERMAX = 40;
 // payload data only, no headers.
 struct SO_PUBLIC Packet
 {
+    Packet(bool packet_data = true);
+    ~Packet();
+
     class Flow* flow;   /* for session tracking */
+    class Endianness* endianness;
+    class Obfuscator* obfuscator;
 
     uint32_t packet_flags;      /* special flags for the packet */
     uint32_t xtradata_mask;
@@ -134,10 +139,9 @@ struct SO_PUBLIC Packet
     uint16_t alt_dsize;         /* the dsize of a packet before munging (used for log)*/
 
     uint8_t num_layers;         /* index into layers for next encap */
-    uint8_t ip_proto_next;      /* the protocol ID after IP and all IP6 extension */
+    // FIXIT-M: Consider moving ip_proto_next below `pkth`.
+    IpProtocol ip_proto_next;      /* the protocol ID after IP and all IP6 extension */
     bool disable_inspect;
-    class Endianness* endianness;
-
     // nothing after this point is zeroed ...
 
     // Everything beyond this point is set by PacketManager::decode()
@@ -157,7 +161,7 @@ struct SO_PUBLIC Packet
     // for correlating configuration with event output
     uint16_t user_policy_id;
 
-    uint8_t ps_proto;  // Used for portscan and unified2 logging
+    IpProtocol ps_proto;  // Used for portscan and unified2 logging
 
     // IP_MAXPACKET is the minimum allowable max_dsize
     // there is no requirement that all data fit into an IP datagram
@@ -220,7 +224,7 @@ struct SO_PUBLIC Packet
      *     eth::ip4::udp::teredo::ip6::hop_opts::ipv6_routing::tcp
      * this function return 6 == IPPROTO_TCP == IPPROTO_ID_TCP
      */
-    inline uint8_t get_ip_proto_next() const
+    inline IpProtocol get_ip_proto_next() const
     { return ip_proto_next; }
 
     /* Similar to above. However, this function
@@ -241,18 +245,14 @@ struct SO_PUBLIC Packet
      *    ....
      * }
      */
-    bool get_ip_proto_next(uint8_t& lyr, uint8_t& proto) const;
+    bool get_ip_proto_next(uint8_t& lyr, IpProtocol& proto) const;
 
-    inline void reset()
-    {
-        memset(this, 0, offsetof(Packet, pkth));
-        ptrs.reset();
-    }
+    void reset();
 
-    bool from_client()
+    bool is_from_client() const
     { return (packet_flags & PKT_FROM_CLIENT) != 0; }
 
-    bool from_server()
+    bool is_from_server() const
     { return (packet_flags & PKT_FROM_SERVER) != 0; }
 
     bool is_portscan()
@@ -275,6 +275,9 @@ struct SO_PUBLIC Packet
 
     void set_application_protocol(int16_t ap)
     { if ( flow ) flow->ssn_state.application_protocol = ap; }
+
+private:
+    bool allocated;
 };
 
 /* Macros to deal with sequence numbers - p810 TCP Illustrated vol 2 */
@@ -302,15 +305,87 @@ inline uint32_t extract_32bits(const uint8_t* p)
     memmove(&tmp, p, sizeof(uint32_t));
     return ntohl(tmp);
 }
-
 #endif
 
 #else
 
 /* allows unaligned ntohl parameter - dies w/SIGBUS on SPARCs */
 inline uint32_t extract_32bits(const uint8_t* p)
-{ return ntohl(*(uint32_t*)p); }
+{
+    assert(p);
+
+    return ntohl(*(uint32_t*)p);
+}
 
 #endif
+
+inline uint16_t alignedNtohs(const uint16_t* ptr)
+{
+    uint16_t value;
+
+    if (ptr == nullptr)
+        return 0;
+
+#ifdef WORDS_MUSTALIGN
+    value = *((uint8_t*)ptr) << 8 | *((uint8_t*)ptr + 1);
+#else
+    value = *ptr;
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    return ((value & 0xff00) >> 8) | ((value & 0x00ff) << 8);
+#else
+    return value;
+#endif
+}
+
+inline uint32_t alignedNtohl(const uint32_t* ptr)
+{
+    uint32_t value;
+
+    if (ptr == nullptr)
+        return 0;
+
+#ifdef WORDS_MUSTALIGN
+    value = *((uint8_t*)ptr) << 24 | *((uint8_t*)ptr + 1) << 16 |
+        *((uint8_t*)ptr + 2) << 8  | *((uint8_t*)ptr + 3);
+#else
+    value = *ptr;
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    return ((value & 0xff000000) >> 24) | ((value & 0x00ff0000) >> 8)  |
+           ((value & 0x0000ff00) << 8)  | ((value & 0x000000ff) << 24);
+#else
+    return value;
+#endif
+}
+
+inline uint64_t alignedNtohq(const uint64_t* ptr)
+{
+    uint64_t value;
+
+    if (ptr == NULL)
+        return 0;
+
+#ifdef WORDS_MUSTALIGN
+    value = *((uint8_t*)ptr) << 56 | *((uint8_t*)ptr + 1) << 48 |
+        *((uint8_t*)ptr + 2) << 40 | *((uint8_t*)ptr + 3) << 32 |
+        *((uint8_t*)ptr + 4) << 24 | *((uint8_t*)ptr + 5) << 16 |
+        *((uint8_t*)ptr + 6) << 8  | *((uint8_t*)ptr + 7);
+#else
+    value = *ptr;
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    return ((value & 0xff00000000000000) >> 56) | ((value & 0x00ff000000000000) >> 40) |
+           ((value & 0x0000ff0000000000) >> 24) | ((value & 0x000000ff00000000) >> 8)  |
+           ((value & 0x00000000ff000000) << 8)  | ((value & 0x0000000000ff0000) << 24) |
+           ((value & 0x000000000000ff00) << 40) | ((value & 0x00000000000000ff) << 56);
+#else
+    return value;
+#endif
+}
+
 #endif
 

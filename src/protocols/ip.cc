@@ -114,7 +114,7 @@ uint8_t IpApi::ttl() const
  * variable hold the first non-ip and non-ipv6 extension protocols,
  * while proto() returns the next or proto() field of the raw IP
  * header */
-uint8_t IpApi::proto() const
+IpProtocol IpApi::proto() const
 {
     switch ( type )
     {
@@ -122,7 +122,7 @@ uint8_t IpApi::proto() const
     case IAT_6: return ((IP6Hdr*)iph)->next();
     default: break;
     }
-    return 0xFF;
+    return IpProtocol::PROTO_NOT_SET;
 }
 
 // header length field: datagram/payload-only length for 4/6
@@ -277,7 +277,8 @@ static bool is_loopback(const snort_in6_addr* const ip)
         return false;
 
     /* Check if the 3rd 32-bit int is zero */
-    if ( p[2] == 0 ) {
+    if ( p[2] == 0 )
+    {
         /* ::7F00:0/104 is ipv4 compatible ipv6 */
         /* ::1 is the IPv6 loopback */
         return ( (ip->u6_addr8[12] == 0x7F) || (ntohl(p[3]) == 0x1) );

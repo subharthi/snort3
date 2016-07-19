@@ -30,10 +30,12 @@
 
 #include "codecs/codec_module.h"
 #include "detection/fp_config.h"
+#include "file_api/file_module.h"
 #include "filters/detection_filter.h"
 #include "filters/rate_filter.h"
 #include "filters/sfrf.h"
 #include "filters/sfthd.h"
+#include "flow/ha_module.h"
 #include "filters/sfthreshold.h"
 #include "framework/module.h"
 #include "host_tracker/host_tracker_module.h"
@@ -42,16 +44,18 @@
 #include "managers/module_manager.h"
 #include "managers/plugin_manager.h"
 #include "memory/memory_module.h"
+#include "packet_io/sfdaq_module.h"
 #include "parser/config_file.h"
 #include "parser/parse_conf.h"
 #include "parser/parse_ip.h"
 #include "parser/parser.h"
 #include "profiler/profiler.h"
 #include "search_engines/pat_stats.h"
+#include "side_channel/side_channel_module.h"
 #include "sfip/sf_ip.h"
+#include "sfip/sf_ipvar.h"
 #include "target_based/sftarget_data.h"
 #include "target_based/snort_protocols.h"
-#include "side_channel/side_channel_module.h"
 
 using namespace std;
 
@@ -246,6 +250,8 @@ const PegInfo mpse_pegs[] =
     { "total flushed", "fast pattern matches discarded due to overflow" },
     { "total inserts", "total fast pattern hits" },
     { "total unique", "total unique fast pattern hits" },
+    { "non-qualified events", "total non-qualified events" },
+    { "qualified events", "total qualified events" },
     { nullptr, nullptr }
 };
 
@@ -389,8 +395,7 @@ static const Parameter profiler_rule_params[] =
     { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
 };
 
-// FIXIT-L J add help
-static const Parameter profiler_params[] =
+static const Parameter profiler_params[] =  // FIXIT-L add help
 {
     { "modules", Parameter::PT_TABLE, profiler_time_params, nullptr,
       "module time profiling" },
@@ -713,6 +718,9 @@ static const Parameter output_params[] =
     { "obfuscate", Parameter::PT_BOOL, nullptr, "false",
       "obfuscate the logged IP addresses (same as -O)" },
 
+    { "obfuscate_pii", Parameter::PT_BOOL, nullptr, "false",
+        "Mask all but the last 4 characters of credit card and social security numbers" },
+
     { "show_year", Parameter::PT_BOOL, nullptr, "false",
       "include year in timestamp in the alert and log files (same as -y)" },
 
@@ -761,6 +769,9 @@ bool OutputModule::set(const char*, Value& v, SnortConfig* sc)
 
     else if ( v.is("obfuscate") )
         v.update_mask(sc->output_flags, OUTPUT_FLAG__OBFUSCATE);
+
+    else if ( v.is("obfuscate_pii") )
+        sc->obfuscate_pii = true;
 
     else if ( v.is("show_year") )
         v.update_mask(sc->output_flags, OUTPUT_FLAG__INCLUDE_YEAR);
@@ -846,9 +857,6 @@ static const Parameter packets_params[] =
     { "bpf_file", Parameter::PT_STRING, nullptr, nullptr,
       "file with BPF to select traffic for Snort" },
 
-    { "enable_inline_init_failopen", Parameter::PT_BOOL, nullptr, "true",
-      "whether to pass traffic during later stage of initialization to avoid drops" },
-
     { "limit", Parameter::PT_INT, "0:", "0",
       "maximum number of packets to process before stopping (0 is unlimited)" },
 
@@ -879,9 +887,6 @@ bool PacketsModule::set(const char*, Value& v, SnortConfig* sc)
     else if ( v.is("bpf_file") )
         sc->bpf_file = v.get_string();
 
-    else if ( v.is("enable_inline_init_failopen") )
-        v.update_mask(sc->run_flags, RUN_FLAG__DISABLE_FAILOPEN, true);
-
     else if ( v.is("limit") )
         sc->pkt_cnt = v.get_long();
 
@@ -897,95 +902,6 @@ bool PacketsModule::set(const char*, Value& v, SnortConfig* sc)
     return true;
 }
 
-//-------------------------------------------------------------------------
-// daq module
-//-------------------------------------------------------------------------
-
-static const Parameter daq_params[] =
-{
-    // FIXIT-L should be a list?
-    { "dir", Parameter::PT_STRING, nullptr, nullptr,
-      "directory where to search for DAQ plugins" },
-
-    { "mode", Parameter::PT_SELECT, "passive | inline | read-file", nullptr,
-      "set mode of operation" },
-
-    { "no_promisc", Parameter::PT_BOOL, nullptr, "false",
-      "whether to put DAQ device into promiscuous mode" },
-
-    // FIXIT-L no default; causes
-    // ERROR: setting DAQ to pcap but pcap already selected.
-    { "type", Parameter::PT_STRING, nullptr, nullptr,
-      "select type of DAQ" },
-
-    // FIXIT-L should be a list?
-    { "vars", Parameter::PT_STRING, nullptr, nullptr,
-      "comma separated list of name=value DAQ-specific parameters" },
-
-    { "snaplen", Parameter::PT_INT, "0:65535", "deflt",
-      "set snap length (same as -P)" },
-
-    { "decode_data_link", Parameter::PT_BOOL, nullptr, "false",
-      "display the second layer header info" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-#define daq_help \
-    "configure packet acquisition interface"
-
-class DaqModule : public Module
-{
-public:
-    DaqModule() : Module("daq", daq_help, daq_params) { }
-    bool set(const char*, Value&, SnortConfig*) override;
-    const PegInfo* get_pegs() const override { return daq_names; }
-    PegCount* get_counts() const override;
-};
-
-bool DaqModule::set(const char*, Value& v, SnortConfig* sc)
-{
-    if ( v.is("dir") )
-        ConfigDaqDir(sc, v.get_string());
-
-    else if ( v.is("mode") )
-        ConfigDaqMode(sc, v.get_string());
-
-    else if ( v.is("no_promisc") )
-        v.update_mask(sc->run_flags, RUN_FLAG__NO_PROMISCUOUS);
-
-    else if ( v.is("type") )
-        ConfigDaqType(sc, v.get_string());
-
-    else if ( v.is("vars") )
-    {
-        string tok;
-        v.set_first_token();
-
-        while ( v.get_next_csv_token(tok) )
-            ConfigDaqVar(sc, tok.c_str());
-    }
-    else if ( v.is("decode_data_link") )
-    {
-        if ( v.get_bool() )
-            ConfigDecodeDataLink(sc, "");
-    }
-    else if ( v.is("snaplen") )
-        sc->pkt_snaplen = v.get_long();
-
-    else
-        return false;
-
-    return true;
-}
-
-PegCount* DaqModule::get_counts() const
-{
-    static THREAD_LOCAL DAQStats ds;
-
-    get_daq_stats(ds);
-    return (PegCount*) &ds;
-}
 
 //-------------------------------------------------------------------------
 // attribute_table module
@@ -1317,339 +1233,6 @@ bool ProcessModule::end(const char* fqn, int idx, SnortConfig* sc)
 }
 
 //-------------------------------------------------------------------------
-// file_id module
-//-------------------------------------------------------------------------
-
-static const Parameter file_magic_params[] =
-{
-    { "content", Parameter::PT_STRING, nullptr, nullptr,
-      "file magic content" },
-
-    { "offset", Parameter::PT_INT, "0:", "0",
-      "file magic offset" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-static const Parameter file_rule_params[] =
-{
-    { "rev", Parameter::PT_INT, "0:", "0",
-      "rule revision" },
-
-    { "msg", Parameter::PT_STRING, nullptr, nullptr,
-      "information about the file type" },
-
-    { "type", Parameter::PT_STRING, nullptr, nullptr,
-      "file type name" },
-
-    { "id", Parameter::PT_INT, "0:", "0",
-      "file type id" },
-
-    { "category", Parameter::PT_STRING, nullptr, nullptr,
-      "file type category" },
-
-    { "version", Parameter::PT_STRING, nullptr, nullptr,
-      "file type version" },
-
-    { "magic", Parameter::PT_LIST, file_magic_params, nullptr,
-      "list of file magic rules" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-// File policy
-static const Parameter file_when_params[] =
-{
-    // FIXIT when.policy_id should be an arbitrary string auto converted
-    // into index for binder matching and lookups
-    { "file_type_id", Parameter::PT_INT, "0:", "0",
-      "unique ID for file type in file magic rule" },
-
-    { "sha256", Parameter::PT_STRING, nullptr, nullptr,
-      "SHA 256" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-static const Parameter file_use_params[] =
-{
-    { "verdict", Parameter::PT_ENUM, "unknown | log | stop | block | reset ", "unknown",
-      "what to do with matching traffic" },
-
-    { "enable_file_type", Parameter::PT_BOOL, nullptr, "false",
-      "true/false -> enable/disable file type identification" },
-
-    { "enable_file_signature", Parameter::PT_BOOL, nullptr, "false",
-      "true/false -> enable/disable file signature" },
-
-    { "enable_file_capture", Parameter::PT_BOOL, nullptr, "false",
-      "true/false -> enable/disable file capture" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-static const Parameter file_policy_rule_params[] =
-{
-    { "when", Parameter::PT_TABLE, file_when_params, nullptr,
-      "match criteria" },
-
-    { "use", Parameter::PT_TABLE, file_use_params, nullptr,
-      "target configuration" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-static const Parameter file_id_params[] =
-{
-    { "type_depth", Parameter::PT_INT, "0:", "1460",
-      "stop type ID at this point" },
-
-    { "signature_depth", Parameter::PT_INT, "0:", "10485760",
-      "stop signature at this point" },
-
-    { "block_timeout", Parameter::PT_INT, "0:", "86400",
-      "stop blocking after this many seconds" },
-
-    { "lookup_timeout", Parameter::PT_INT, "0:", "2",
-      "give up on lookup after this many seconds" },
-
-    { "block_timeout_lookup", Parameter::PT_BOOL, nullptr, "false",
-      "block if lookup times out" },
-
-    { "capture_memcap", Parameter::PT_INT, "0:", "100",
-      "memcap for file capture in megabytes" },
-
-    { "capture_max_size", Parameter::PT_INT, "0:", "1048576",
-      "stop file capture beyond this point" },
-
-    { "capture_min_size", Parameter::PT_INT, "0:", "0",
-      "stop file capture if file size less than this" },
-
-    { "capture_block_size", Parameter::PT_INT, "8:", "32768",
-      "file capture block size in bytes" },
-
-    { "enable_type", Parameter::PT_BOOL, nullptr, "false",
-      "enable type ID" },
-
-    { "enable_signature", Parameter::PT_BOOL, nullptr, "false",
-      "enable signature calculation" },
-
-    { "enable_capture", Parameter::PT_BOOL, nullptr, "false",
-      "enable file capture" },
-
-    { "show_data_depth", Parameter::PT_INT, "0:", "100",
-      "print this many octets" },
-
-    { "file_rules", Parameter::PT_LIST, file_rule_params, nullptr,
-      "list of file magic rules" },
-
-    { "file_policy", Parameter::PT_LIST, file_policy_rule_params, nullptr,
-      "list of file rules" },
-
-    { "trace_type", Parameter::PT_BOOL, nullptr, "false",
-      "enable runtime dump of type info" },
-
-    { "trace_signature", Parameter::PT_BOOL, nullptr, "false",
-      "enable runtime dump of signature info" },
-
-    { "trace_stream", Parameter::PT_BOOL, nullptr, "false",
-      "enable runtime dump of file data" },
-
-    { nullptr, Parameter::PT_MAX, nullptr, nullptr, nullptr }
-};
-
-#define file_id_help \
-    "configure file identification"
-
-class FileIdModule : public Module
-{
-public:
-    FileIdModule() : Module("file_id", file_id_help, file_id_params) { }
-    bool set(const char*, Value&, SnortConfig*) override;
-    bool begin(const char*, int, SnortConfig*) override;
-    bool end(const char*, int, SnortConfig*) override;
-
-private:
-    FileMagicRule rule;
-    FileMagicData magic;
-    FileRule file_rule;
-};
-
-bool FileIdModule::set(const char*, Value& v, SnortConfig* sc)
-{
-    FileConfig& fc = sc->file_config;
-
-    FilePolicy& fp = fc.get_file_policy();
-
-    if ( v.is("type_depth") )
-        fc.file_type_depth = v.get_long();
-
-    else if ( v.is("signature_depth") )
-        fc.file_signature_depth = v.get_long();
-
-    else if ( v.is("block_timeout") )
-        fc.file_block_timeout = v.get_long();
-
-    else if ( v.is("lookup_timeout") )
-        fc.file_lookup_timeout = v.get_long();
-
-    else if ( v.is("block_timeout_lookup") )
-        fc.block_timeout_lookup = v.get_bool();
-        
-    else if ( v.is("capture_memcap") )
-        fc.capture_memcap = v.get_long();
-
-    else if ( v.is("capture_max_size") )
-        fc.capture_max_size = v.get_long();
-
-    else if ( v.is("capture_min_size") )
-        fc.capture_min_size = v.get_long();
-
-    else if ( v.is("capture_block_size") )
-        fc.capture_block_size = v.get_long();
-
-    else if ( v.is("enable_type") )
-    {
-        if ( v.get_bool() )
-        {
-            fp.set_file_type(true);
-        }
-    }
-    else if ( v.is("enable_signature") )
-    {
-        if ( v.get_bool() )
-        {
-            fp.set_file_signature(true);
-        }
-    }
-    else if ( v.is("enable_capture") )
-    {
-        if ( v.get_bool() )
-        {
-            fp.set_file_capture(true);
-        }
-    }
-    else if ( v.is("show_data_depth") )
-        FileConfig::show_data_depth = v.get_long();
-
-    else if ( v.is("trace_type") )
-        FileConfig::trace_type = v.get_bool();
-
-    else if ( v.is("trace_signature") )
-        FileConfig::trace_signature = v.get_bool();
-
-    else if ( v.is("trace_stream") )
-        FileConfig::trace_stream = v.get_bool();
-
-    else if ( v.is("file_rules") )
-        return true;
-
-    else if ( v.is("rev") )
-        rule.rev = v.get_long();
-
-    else if ( v.is("msg") )
-        rule.message = v.get_string();
-
-    else if ( v.is("type") )
-        rule.type = v.get_string();
-
-    else if ( v.is("id") )
-        rule.id = v.get_long();
-
-    else if ( v.is("category") )
-        rule.category = v.get_string();
-
-    else if ( v.is("version") )
-        rule.version = v.get_string();
-
-    else if ( v.is("magic") )
-        return true;
-
-    else if ( v.is("content") )
-        magic.content_str = v.get_string();
-
-    else if ( v.is("offset") )
-        magic.offset = v.get_long();
-
-    else if ( v.is("file_policy") )
-        return true;
-
-    else if ( v.is("when") )
-        return true;
-
-    else if ( v.is("file_type_id") )
-        file_rule.when.type_id = v.get_long();
-
-    else if ( v.is("sha256") )
-        file_rule.when.sha256 = v.get_string();
-
-    else if ( v.is("use") )
-        return true;
-
-    else if ( v.is("verdict") )
-        file_rule.use.verdict = (FileVerdict)v.get_long();
-
-    else if ( v.is("enable_file_type") )
-        file_rule.use.type_enabled = v.get_bool();
-
-    else if ( v.is("enable_file_signature") )
-        file_rule.use.signature_enabled = v.get_bool();
-
-    else if ( v.is("enable_file_capture") )
-        file_rule.use.capture_enabled = v.get_bool();
-
-    else
-        return false;
-
-    return true;
-}
-
-bool FileIdModule::begin(const char* fqn, int idx, SnortConfig*)
-{
-    if (!idx)
-        return true;
-
-    if ( !strcmp(fqn, "file_id.file_rules") )
-    {
-        rule.clear();
-    }
-    else if ( !strcmp(fqn, "file_id.file_rules.magic") )
-    {
-        magic.clear();
-    }
-    else if ( !strcmp(fqn, "file_id.file_policy") )
-    {
-        file_rule.clear();
-    }
-
-    return true;
-}
-
-bool FileIdModule::end(const char* fqn, int idx, SnortConfig* sc)
-{
-    FileConfig& fc = sc->file_config;
-
-    if (!idx)
-        return true;
-
-    if ( !strcmp(fqn, "file_id.file_rules") )
-    {
-        fc.process_file_rule(rule);
-    }
-    else if ( !strcmp(fqn, "file_id.file_rules.magic") )
-    {
-        fc.process_file_magic(magic);
-        rule.file_magics.push_back(magic);
-    }
-    else if ( !strcmp(fqn, "file_id.file_policy") )
-    {
-        fc.process_file_policy_rule(file_rule);
-    }
-
-    return true;
-}
-
-//-------------------------------------------------------------------------
 // suppress module
 //-------------------------------------------------------------------------
 
@@ -1858,7 +1441,9 @@ static const Parameter rate_filter_params[] =
 class RateFilterModule : public Module
 {
 public:
-    RateFilterModule() : Module("rate_filter", rate_filter_help, rate_filter_params, true) { }
+    RateFilterModule() : Module("rate_filter", rate_filter_help, rate_filter_params, true)
+    { thdx.applyTo = nullptr; }
+    ~RateFilterModule();
     bool set(const char*, Value&, SnortConfig*) override;
     bool begin(const char*, int, SnortConfig*) override;
     bool end(const char*, int, SnortConfig*) override;
@@ -1866,6 +1451,12 @@ public:
 private:
     tSFRFConfigNode thdx;
 };
+
+RateFilterModule::~RateFilterModule()
+{
+    if ( thdx.applyTo )
+        sfvar_free(thdx.applyTo);
+}
 
 bool RateFilterModule::set(const char*, Value& v, SnortConfig*)
 {
@@ -2154,17 +1745,17 @@ void module_init()
     ModuleManager::add_module(get_snort_module());
 
     // these modules are not policy specific
-    ModuleManager::add_module(new MemoryModule);
     ModuleManager::add_module(new ClassificationsModule);
-    ModuleManager::add_module(new DaqModule);
+    ModuleManager::add_module(new CodecModule);
     ModuleManager::add_module(new DetectionModule);
+    ModuleManager::add_module(new MemoryModule);
     ModuleManager::add_module(new PacketsModule);
     ModuleManager::add_module(new ProcessModule);
     ModuleManager::add_module(new ProfilerModule);
     ModuleManager::add_module(new ReferencesModule);
     ModuleManager::add_module(new RuleStateModule);
     ModuleManager::add_module(new SearchEngineModule);
-    ModuleManager::add_module(new CodecModule);
+    ModuleManager::add_module(new SFDAQModule);
 
     // these could but prolly shouldn't be policy specific
     // or should be broken into policy and non-policy parts
@@ -2179,6 +1770,7 @@ void module_init()
     ModuleManager::add_module(new LatencyModule);
 
     ModuleManager::add_module(new SideChannelModule);
+    ModuleManager::add_module(new HighAvailabilityModule);
 
     // these modules should be in ips policy
     ModuleManager::add_module(new EventFilterModule);

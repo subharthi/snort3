@@ -46,28 +46,32 @@ void NHttpMsgStatus::parse_start_line()
     if ((start_line.length < 12) || !is_sp_tab[start_line.start[8]])
     {
         infractions += INF_BAD_STAT_LINE;
-        events.create_event(EVENT_LOSS_OF_SYNC);
+        events.create_event(EVENT_MISFORMATTED_HTTP);
         return;
     }
 
     int32_t first_end; // last whitespace in first clump of whitespace
-    for (first_end = 9; is_sp_tab[start_line.start[first_end]] && (first_end < start_line.length);
+    for (first_end = 9; (first_end < start_line.length) && is_sp_tab[start_line.start[first_end]];
         first_end++);
     first_end--;
 
     if (start_line.length < first_end + 4)
     {
         infractions += INF_BAD_STAT_LINE;
-        events.create_event(EVENT_LOSS_OF_SYNC);
+        events.create_event(EVENT_MISFORMATTED_HTTP);
         return;
     }
 
     if ((start_line.length > first_end + 4) && !is_sp_tab[start_line.start[first_end + 4]])
     {
+        // FIXIT-M This should not be fatal. HI supports something like "HTTP/1.1 200\\OK\r\n" as
+        // seen in a status line test.
         infractions += INF_BAD_STAT_LINE;
-        events.create_event(EVENT_LOSS_OF_SYNC);
+        events.create_event(EVENT_MISFORMATTED_HTTP);
         return;
     }
+
+    NHttpModule::increment_peg_counts(PEG_RESPONSE);
 
     version.start = start_line.start;
     version.length = 8;
@@ -159,6 +163,12 @@ void NHttpMsgStatus::update_flow()
         session_data->status_code_num = status_code_num;
         session_data->infractions[source_id].reset();
         session_data->events[source_id].reset();
+        // 100 response means the next response message will be added to this transaction instead
+        // of being part of another transaction. As implemented it is possible for multiple 100
+        // responses to all be included in the same transaction. It's not obvious whether that is
+        // the best way to handle what should be a highly abnormal situation.
+        if (status_code_num == 100)
+            transaction->second_response_coming();
     }
     session_data->section_type[source_id] = SEC__NOT_COMPUTE;
 }
@@ -171,13 +181,13 @@ void NHttpMsgStatus::print_section(FILE* output)
     fprintf(output, "Status Code Num: %d\n", status_code_num);
     reason_phrase.print(output, "Reason Phrase");
     get_classic_buffer(NHTTP_BUFFER_STAT_CODE, 0, 0).print(output,
-        NHttpApi::classic_buffers[NHTTP_BUFFER_STAT_CODE-1]);
+        NHttpApi::classic_buffer_names[NHTTP_BUFFER_STAT_CODE-1]);
     get_classic_buffer(NHTTP_BUFFER_STAT_MSG, 0, 0).print(output,
-        NHttpApi::classic_buffers[NHTTP_BUFFER_STAT_MSG-1]);
+        NHttpApi::classic_buffer_names[NHTTP_BUFFER_STAT_MSG-1]);
     get_classic_buffer(NHTTP_BUFFER_VERSION, 0, 0).print(output,
-        NHttpApi::classic_buffers[NHTTP_BUFFER_VERSION-1]);
+        NHttpApi::classic_buffer_names[NHTTP_BUFFER_VERSION-1]);
     get_classic_buffer(NHTTP_BUFFER_RAW_STATUS, 0, 0).print(output,
-        NHttpApi::classic_buffers[NHTTP_BUFFER_RAW_STATUS-1]);
+        NHttpApi::classic_buffer_names[NHTTP_BUFFER_RAW_STATUS-1]);
     NHttpMsgSection::print_section_wrapup(output);
 }
 #endif

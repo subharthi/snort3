@@ -416,7 +416,7 @@ static int sip_startline_parse(SIPMsg* msg, const char* buff, char* end, char** 
         if (space == NULL)
             return false;
         msg->uriLen = space - msg->uri;
-        DebugFormat(DEBUG_SIP, "uri: %.*s, length: %u\n", msg->uriLen, msg->uri,
+        DebugFormat(DEBUG_SIP, "uri: %.*s, length: %hu\n", msg->uriLen, msg->uri,
             msg->uriLen);
         if (0 == msg->uriLen)
             SnortEventqAdd(GID_SIP, SIP_EVENT_EMPTY_REQUEST_URI);
@@ -537,9 +537,7 @@ static int sip_body_parse(SIPMsg* msg, const char* buff, char* end, char** bodyE
     msg->body_data = (uint8_t*)buff;
 
     // Create a media session
-    msg->mediaSession = (SIP_MediaSession*)calloc(1, sizeof(SIP_MediaSession));
-    if (NULL == msg->mediaSession)
-        return false;
+    msg->mediaSession = (SIP_MediaSession*)snort_calloc(sizeof(SIP_MediaSession));
     start = (char*)buff;
 
     /*
@@ -899,7 +897,7 @@ static int sip_parse_cseq(SIPMsg* msg, const char* start, const char* end, SIP_P
         msg->cseqNameLen = end - msg->cseqName;
         method = SIP_FindMethod (config->methods, msg->cseqName, msg->cseqNameLen);
     }
-    DebugFormat(DEBUG_SIP, "CSeq number: %d, CSeqName: %.*s\n",
+    DebugFormat(DEBUG_SIP, "CSeq number: %lu, CSeqName: %.*s\n",
         msg->cseqnum, msg->cseqNameLen, msg->cseqName);
 
     if (NULL == method)
@@ -1093,7 +1091,7 @@ static int sip_parse_sdp_o(SIPMsg* msg, const char* start, const char* end)
     if (NULL == spaceIndex2)
         return SIP_PARSE_ERROR;
 
-    DebugFormat(DEBUG_SIP, "Session information: %.*s\n", spaceIndex - start, start);
+    DebugFormat(DEBUG_SIP, "Session information: %.*s\n", static_cast<int>(spaceIndex - start), start);
 
     //sessionId uses all elements from o: line except sessionId version
     msg->mediaSession->sessionID =  strToHash(start, spaceIndex - start);
@@ -1192,21 +1190,20 @@ static int sip_parse_sdp_m(SIPMsg* msg, const char* start, const char* end)
     DebugFormat(DEBUG_SIP, "Media information: %.*s\n", length, start);
 
     spaceIndex = (char*)memchr(start, ' ', length);  // first space
+
     if ((NULL == spaceIndex)||(spaceIndex == end))
         return SIP_PARSE_ERROR;
-    mdata = (SIP_MediaData*)calloc(1, sizeof(SIP_MediaData));
 
-    if (NULL == mdata)
-        return SIP_PARSE_ERROR;
-
+    mdata = (SIP_MediaData*)snort_calloc(sizeof(SIP_MediaData));
     mdata->mport = (uint16_t)SnortStrtoul(spaceIndex + 1, &next, 10);
+
     if ((NULL != next)&&('/'==next[0]))
         mdata->numPort = (uint8_t)SnortStrtoul(spaceIndex + 1, &next, 10);
     // Put
     mdata->nextM = msg->mediaSession->medias;
     mdata->maddress = msg->mediaSession->maddress_default;
     msg->mediaSession->medias = mdata;
-    DebugFormat(DEBUG_SIP, "Media IP: %s, Media port %u, number of media: %d\n",
+    DebugFormat(DEBUG_SIP, "Media IP: %s, Media port %hu, number of media: %d\n",
         sfip_to_str(&mdata->maddress), mdata->mport, mdata->numPort);
     return SIP_PARSE_SUCCESS;
 }
@@ -1351,11 +1348,11 @@ void sip_freeMediaSession(SIP_MediaSession* mediaSession)
         DebugFormat(DEBUG_SIP, "Clear media ip: %s, port: %d, number of port: %d\n",
             sfip_to_str(&curNode->maddress), curNode->mport, curNode->numPort);
         nextNode = curNode->nextM;
-        free(curNode);
+        snort_free(curNode);
         curNode = nextNode;
     }
     if (NULL != mediaSession)
-        free (mediaSession);
+        snort_free(mediaSession);
 }
 
 /********************************************************************

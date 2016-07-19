@@ -33,6 +33,7 @@
 #include <limits.h>
 #include <luajit.h>
 #include <netdb.h>
+#include <openssl/crypto.h>
 #include <pcap.h>
 #include <pcre.h>
 #include <pwd.h>
@@ -44,9 +45,6 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#ifdef HAVE_OPENSSL_SHA
-#include <openssl/crypto.h>
-#endif
 
 #ifdef HAVE_LZMA
 #include <lzma.h>
@@ -89,7 +87,7 @@ char** protocol_names = NULL;
 #define SNORT_VERSION_STRLEN sizeof(SNORT_VERSION_STRING)
 char __snort_version_string[SNORT_VERSION_STRLEN];
 
-void StoreSnortInfoStrings(void)
+void StoreSnortInfoStrings()
 {
     strncpy(__snort_version_string, SNORT_VERSION_STRING,
         sizeof(__snort_version_string));
@@ -109,7 +107,7 @@ void StoreSnortInfoStrings(void)
  * Returns: 0 all the time
  *
  ****************************************************************************/
-int DisplayBanner(void)
+int DisplayBanner()
 {
     const char* info = getenv("HOSTTYPE");
 
@@ -138,9 +136,7 @@ int DisplayBanner(void)
 #ifdef HAVE_LZMA
     LogMessage("           Using LZMA version %s\n", lzma_version_string());
 #endif
-#ifdef HAVE_OPENSSL_SHA
     LogMessage("           Using %s\n", SSLeay_version(SSLEAY_VERSION));
-#endif
 #ifdef HAVE_HYPERSCAN
     LogMessage("           Using Hyperscan version %s\n", hs_version());
 #endif
@@ -320,7 +316,7 @@ void CreatePidFile(pid_t pid)
  * Returns: void function
  *
  ****************************************************************************/
-void ClosePidFile(void)
+void ClosePidFile()
 {
     if (pid_file)
     {
@@ -349,28 +345,24 @@ void SetUidGid(int user_id, int group_id)
 {
     if ((group_id != -1) && (getgid() != (gid_t)group_id))
     {
-        if ( !DAQ_Unprivileged() )
-            ParseError("cannot set uid and gid - %s DAQ does not"
-                " support unprivileged operation.\n", DAQ_GetType());
-
+        if (!SFDAQ::unprivileged())
+            ParseError("Cannot set GID - %s DAQ does not support unprivileged operation.\n",
+                    SFDAQ::get_type());
         else if (setgid(group_id) < 0)
-            ParseError("Cannot set gid: %d", group_id);
-
+            ParseError("Cannot set GID: %d", group_id);
         else
-            LogMessage("Set gid to %d\n", group_id);
+            LogMessage("Set GID to %d\n", group_id);
     }
 
     if ((user_id != -1) && (getuid() != (uid_t)user_id))
     {
-        if ( !DAQ_Unprivileged() )
-            ParseError("cannot set uid and gid - %s DAQ does not"
-                " support unprivileged operation.\n", DAQ_GetType());
-
+        if (!SFDAQ::unprivileged())
+            ParseError("Cannot set UID - %s DAQ does not support unprivileged operation.\n",
+                    SFDAQ::get_type());
         else if (setuid(user_id) < 0)
-            ParseError("Can not set uid: %d", user_id);
-
+            ParseError("Cannot set UID: %d", user_id);
         else
-            LogMessage("Set uid to %d\n", user_id);
+            LogMessage("Set UID to %d\n", user_id);
     }
 }
 
@@ -395,14 +387,12 @@ void InitGroups(int user_id, int group_id)
         if (pw != NULL)
         {
             /* getpwuid and initgroups may use the same static buffers */
-            char* username = SnortStrdup(pw->pw_name);
+            char* username = snort_strdup(pw->pw_name);
 
             if (initgroups(username, group_id) < 0)
-            {
                 ParseError("Can not initgroups(%s,%d)", username, group_id);
-            }
 
-            free(username);
+            snort_free(username);
         }
 
         /** Just to be on the safe side... **/
@@ -413,37 +403,33 @@ void InitGroups(int user_id, int group_id)
 
 //-------------------------------------------------------------------------
 
-// FIXIT-L  This is a duplicate of PacketManager::get_proto_name().0
-void InitProtoNames(void)
+// FIXIT-L this is a duplicate of PacketManager::get_proto_name()
+void InitProtoNames()
 {
-    int i;
+    if ( !protocol_names )
+        protocol_names = (char**)snort_calloc(NUM_IP_PROTOS, sizeof(char*));
 
-    if (protocol_names == NULL)
-        protocol_names = (char**)SnortAlloc(sizeof(char*) * NUM_IP_PROTOS);
-
-    for (i = 0; i < NUM_IP_PROTOS; i++)
+    for ( int i = 0; i < NUM_IP_PROTOS; i++ )
     {
         struct protoent* pt = getprotobynumber(i);  // main thread only
 
         if (pt != NULL)
         {
-            size_t j;
+            protocol_names[i] = snort_strdup(pt->p_name);
 
-            protocol_names[i] = SnortStrdup(pt->p_name);
-            for (j = 0; j < strlen(protocol_names[i]); j++)
+            for ( size_t j = 0; j < strlen(protocol_names[i]); j++ )
                 protocol_names[i][j] = toupper(protocol_names[i][j]);
         }
         else
         {
             char protoname[10];
-
             SnortSnprintf(protoname, sizeof(protoname), "PROTO:%03d", i);
-            protocol_names[i] = SnortStrdup(protoname);
+            protocol_names[i] = snort_strdup(protoname);
         }
     }
 }
 
-void CleanupProtoNames(void)
+void CleanupProtoNames()
 {
     if (protocol_names != NULL)
     {
@@ -452,10 +438,10 @@ void CleanupProtoNames(void)
         for (i = 0; i < NUM_IP_PROTOS; i++)
         {
             if (protocol_names[i] != NULL)
-                free(protocol_names[i]);
+                snort_free(protocol_names[i]);
         }
 
-        free(protocol_names);
+        snort_free(protocol_names);
         protocol_names = NULL;
     }
 }
@@ -471,63 +457,42 @@ void CleanupProtoNames(void)
  * Returns: the processed BPF string
  *
  ****************************************************************************/
-char* read_infile(const char* key, const char* fname)
+std::string read_infile(const char* key, const char* fname)
 {
-    int fd, cc;
-    char* cp, * cmt;
+    int fd = open(fname, O_RDONLY);
     struct stat buf;
-
-    fd = open(fname, O_RDONLY);
-
-    if (fd < 0)
-    {
-        ParseError("can't open %s = %s: %s", key, fname, get_error(errno));
-        return nullptr;
-    }
 
     if (fstat(fd, &buf) < 0)
     {
         ParseError("can't stat %s: %s", fname, get_error(errno));
-        return nullptr;
+        return "";
     }
 
-    cp = (char*)SnortAlloc(((u_int)buf.st_size + 1) * sizeof(char));
-
-    cc = read(fd, cp, (int)buf.st_size);
-
-    if (cc < 0)
+    //check that its a regular file and not a directory or special file
+    if (!S_ISREG(buf.st_mode) )
     {
-        ParseError("read %s: %s", fname, get_error(errno));
-        free(cp);
-        return nullptr;
+        ParseError("not a regular file: %s", fname);
+        return "";
     }
 
-    if (cc != buf.st_size)
+    std::string line;
+    std::ifstream bpf_file(fname);
+
+    if (bpf_file.is_open())
     {
-        ParseError("short read %s (%d != %d)", fname, cc, (int)buf.st_size);
-        free(cp);
-        return nullptr;
+        std::stringstream file_content;
+        file_content << bpf_file.rdbuf();
+        line = file_content.str();
+
+        bpf_file.close();
     }
-
-    cp[(int)buf.st_size] = '\0';
-
-    close(fd);
-
-    /* Treat everything upto the end of the line as a space
-     *  so that we can put comments in our BPF filters
-     */
-
-    while ((cmt = strchr(cp, '#')) != NULL)
+    else
     {
-        while (*cmt != '\r' && *cmt != '\n' && *cmt != '\0')
-        {
-            *cmt++ = ' ';
-        }
+        ParseError("can't open file %s = %s: %s", key, fname, get_error(errno));
+    	return "";	
     }
 
-    /** LogMessage("BPF filter file: %s\n", fname); **/
-
-    return(cp);
+    return line;
 }
 
 /* Guaranteed to be '\0' terminated even if truncation occurs.
@@ -660,14 +625,14 @@ int SnortStrncpy(char* dst, const char* src, size_t dst_size)
 
 char* SnortStrndup(const char* src, size_t dst_size)
 {
-    char* ret = (char*)SnortAlloc(dst_size + 1);
+    char* ret = (char*)snort_calloc(dst_size + 1);
     int ret_val;
 
     ret_val = SnortStrncpy(ret, src, dst_size + 1);
 
     if (ret_val == SNORT_STRNCPY_ERROR)
     {
-        free(ret);
+        snort_free(ret);
         return NULL;
     }
 
@@ -699,17 +664,13 @@ int SnortStrnlen(const char* buf, int buf_size)
     return i;
 }
 
-char* SnortStrdup(const char* str)
+char* snort_strdup(const char* str)
 {
     assert(str);
-    char* copy = strdup(str);
-
-    if ( !copy )
-    {
-        FatalError("Unable to duplicate string: %s\n", str);
-    }
-
-    return copy;
+    size_t n = strlen(str) + 1;
+    char* p = (char*)snort_alloc(n);
+    memcpy(p, str, n);
+    return p;
 }
 
 /*
@@ -853,7 +814,7 @@ void SetChroot(std::string directory, std::string& logstore)
 
     abslen = strlen(absdir);
 
-    DebugFormat(DEBUG_INIT, "ABS: %s %d\n", absdir, abslen);
+    DebugFormat(DEBUG_INIT, "ABS: %s %zu\n", absdir, abslen);
 
     /* make the chroot call */
     if (chroot(absdir) < 0)
@@ -901,7 +862,7 @@ void SetChroot(std::string directory, std::string& logstore)
  * Return a ptr to the absolute pathname of snort.  This memory must
  * be copied to another region if you wish to save it for later use.
  */
-char* CurrentWorkingDir(void)
+char* CurrentWorkingDir()
 {
     static THREAD_LOCAL char buf[PATH_MAX_UTIL + 1];
 
@@ -928,17 +889,12 @@ char* GetAbsolutePath(const char* dir)
         return NULL;
     }
 
-    savedir = strdup(CurrentWorkingDir());
-
-    if (savedir == NULL)
-    {
-        return NULL;
-    }
+    savedir = snort_strdup(CurrentWorkingDir());
 
     if (chdir(dir) < 0)
     {
         LogMessage("Can't change to directory: %s\n", dir);
-        free(savedir);
+        snort_free(savedir);
         return NULL;
     }
 
@@ -947,7 +903,7 @@ char* GetAbsolutePath(const char* dir)
     if (dirp == NULL)
     {
         LogMessage("Unable to access current directory\n");
-        free(savedir);
+        snort_free(savedir);
         return NULL;
     }
     else
@@ -959,16 +915,16 @@ char* GetAbsolutePath(const char* dir)
     if (chdir(savedir) < 0)
     {
         LogMessage("Can't change back to directory: %s\n", dir);
-        free(savedir);
+        snort_free(savedir);
         return NULL;
     }
 
-    free(savedir);
+    snort_free(savedir);
     return (char*)buf;
 }
 
 #if defined(NOCOREFILE)
-void SetNoCores(void)
+void SetNoCores()
 {
     struct rlimit rlim;
 

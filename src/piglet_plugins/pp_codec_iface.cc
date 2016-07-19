@@ -81,11 +81,18 @@ static const luaL_Reg methods[] =
         {
             auto& self = CodecIface.get(L);
 
-            std::vector<uint16_t> ret;
+            std::vector<ProtocolId> ret;
             self.get_protocol_ids(ret);
 
+            //  Convert ProtocolId vector to uint16_t vector to make
+            //  Lua templates happy.
+            //  FIXIT-L  add support for ProtocolId in Lua code.
+            std::vector<uint16_t> tmp;
+            for(auto a: ret)
+                tmp.push_back(to_utype(a));
+
             lua_newtable(L);
-            Lua::fill_table_from_vector(L, lua_gettop(L), ret);
+            Lua::fill_table_from_vector(L, lua_gettop(L), tmp);
 
             return 1;
         }
@@ -181,7 +188,7 @@ static const luaL_Reg methods[] =
             uint32_t flags_lo = args[off + 2].check_size();
             auto& rb = RawBufferIface.get(L, off + 3);
 
-            // FIXIT-L: Args vs Iface is not orthogonal
+            // FIXIT-L Args vs Iface is not orthogonal
             uint16_t lyr_len = args[off + 4].opt_size(0, rb.size());
 
             auto& self = CodecIface.get(L);

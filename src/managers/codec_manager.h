@@ -33,6 +33,7 @@
 #include <cstdint>
 
 #include "main/thread.h"
+#include "protocols/protocol_ids.h"
 
 #ifdef PIGLET
 #include "framework/codec.h"
@@ -49,8 +50,6 @@ struct ProfileStats;
 //-------------------------------------------------------------------------
 
 extern THREAD_LOCAL ProfileStats decodePerfStats;
-
-static const uint16_t max_protocol_id = 65535;
 
 #ifdef PIGLET
 struct CodecWrapper
@@ -96,15 +95,18 @@ public:
     static CodecWrapper* instantiate(const char*, Module*, SnortConfig*);
 #endif
 
+    static uint8_t get_max_layers()
+    { return max_layers; }
+
 private:
     struct CodecApiWrapper;
 
     static std::vector<CodecApiWrapper> s_codecs;
-    static std::array<uint8_t, max_protocol_id> s_proto_map;
+    static std::array<ProtocolIndex, max_protocol_id> s_proto_map;
     static std::array<Codec*, UINT8_MAX> s_protocols;
 
-    static THREAD_LOCAL uint16_t grinder_id;
-    static THREAD_LOCAL uint8_t grinder;
+    static THREAD_LOCAL ProtocolId grinder_id;
+    static THREAD_LOCAL ProtocolIndex grinder;
     static THREAD_LOCAL uint8_t max_layers;
 
     /*

@@ -143,7 +143,7 @@ bool SfSocketModule::end(const char* fqn, int, SnortConfig*)
 //-------------------------------------------------------------------------
 // socket stuff
 
-static int AlertSFSocket_Connect(void)
+static int AlertSFSocket_Connect()
 {
     /* check sock value */
     if (context.sock == -1)
@@ -242,7 +242,7 @@ static void send_sar(uint8_t* data, unsigned len)
 // sig stuff
 
 /* search for an OptTreeNode by sid in specific policy*/
-// FIXIT-L wow - this should be encapsulated somewhere ...
+// FIXIT-L wow - OptTreeNode_Search should be encapsulated somewhere ...
 // (actually, the whole reason for doing this needs to be rethought)
 static OptTreeNode* OptTreeNode_Search(uint32_t, uint32_t sid)
 {
@@ -283,7 +283,7 @@ struct SnortActionRequest
     uint32_t dest_ip;
     uint16_t sport;
     uint16_t dport;
-    uint8_t protocol;
+    IpProtocol ip_proto;
 };
 
 static void load_sar(Packet* packet, Event* event, SnortActionRequest& sar)
@@ -311,7 +311,7 @@ static void load_sar(Packet* packet, Event* event, SnortActionRequest& sar)
     //   and only 1st 8 used for ip4
     sar.src_ip =  ntohl(packet->ptrs.ip_api.get_src()->ip32[0]);
     sar.dest_ip = ntohl(packet->ptrs.ip_api.get_dst()->ip32[0]);
-    sar.protocol = packet->get_ip_proto_next();
+    sar.ip_proto = packet->get_ip_proto_next();
 
     if (packet->is_tcp() || packet->is_udp())
     {

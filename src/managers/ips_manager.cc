@@ -192,7 +192,7 @@ bool IpsManager::option_begin(
 
     if ( opt->api->max_per_rule && (++opt->count > opt->api->max_per_rule) )
     {
-        ParseError("%s allowed only %d time(s) per rule",
+        ParseError("%s allowed only %u time(s) per rule",
             opt->api->base.name, opt->api->max_per_rule);
         return false;
     }
@@ -200,8 +200,7 @@ bool IpsManager::option_begin(
     // FIXIT-H allow service too
     //if ( opt->api->protos && !(proto & opt->api->protos) )
     //{
-    //    ParseError("%s not allowed with given rule protocol",
-    //        opt->api->base.name);
+    //    ParseError("%s not allowed with given rule protocol", opt->api->base.name);
     //    return false;
     //}
 

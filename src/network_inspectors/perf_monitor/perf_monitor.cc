@@ -38,7 +38,6 @@
 #include "perf_monitor.h"
 #include "perf_module.h"
 
-#include "main/analyzer.h"
 #include "main/snort_config.h"
 #include "main/snort_types.h"
 #include "main/snort_debug.h"
@@ -53,7 +52,6 @@
 #include "cpu_tracker.h"
 #include "flow_tracker.h"
 #include "flow_ip_tracker.h"
-#include "event_tracker.h"
 
 #ifdef UNIT_TEST
 #include "catch/catch.hpp"
@@ -64,7 +62,7 @@ THREAD_LOCAL ProfileStats perfmonStats;
 
 THREAD_LOCAL bool perfmon_rotate_perf_file = false;
 static PerfConfig config;
-PerfConfig* perfmon_config = &config;   //FIXIT-M remove this after flowip can be decoupled.
+PerfConfig* perfmon_config = &config;   // FIXIT-M remove this after flowip can be decoupled.
 THREAD_LOCAL std::vector<PerfTracker*>* trackers;
 
 static bool ready_to_process(Packet* p);
@@ -87,13 +85,12 @@ public:
     void tterm() override;
 };
 
-static THREAD_LOCAL PerfMonitor* this_perf_monitor;
+static THREAD_LOCAL PerfMonitor* this_perf_monitor = nullptr;
 
 PerfMonitor::PerfMonitor(PerfMonModule* mod)
 {
     mod->get_config(config);
     perfmon_config = &config;
-
 }
 
 void PerfMonitor::show(SnortConfig*)
@@ -134,17 +131,22 @@ void PerfMonitor::show(SnortConfig*)
     switch(config.format)
     {
         case PERF_TEXT:
-            LogMessage("    Output Location:  text\n");
+            LogMessage("    Output Format:  text\n");
             break;
         case PERF_CSV:
-            LogMessage("    Output Location:  csv\n");
+            LogMessage("    Output Format:  csv\n");
             break;
+#ifdef UNIT_TEST
+        case PERF_MOCK:
+            break;
+#endif
     }
 }
 
-// FIXIT-L perfmonitor should be logging to one file and writing record type and
-// version fields immediately after timestamp like
-// seconds, usec, type, version#, data1, data2, ...
+// FIXIT-L perfmonitor should be logging to one file and writing record
+// type and version fields immediately after timestamp like seconds, usec,
+// type, version#, data1, data2, ...
+
 bool PerfMonitor::configure(SnortConfig*)
 {
     return true;
@@ -158,13 +160,10 @@ void PerfMonitor::tinit()
         trackers->push_back(new BaseTracker(&config));
 
     if (config.perf_flags & PERF_FLOW)
-        trackers->push_back(perf_flow = new FlowTracker(&config));
+        trackers->push_back(new FlowTracker(&config));
 
     if (config.perf_flags & PERF_FLOWIP)
         trackers->push_back(perf_flow_ip = new FlowIPTracker(&config));
-
-    if (config.perf_flags & PERF_EVENT)
-        trackers->push_back(perf_event = new EventTracker(&config));
 
     if (config.perf_flags & PERF_CPU )
         trackers->push_back(new CPUTracker(&config));
@@ -180,9 +179,7 @@ void PerfMonitor::tinit()
 
 void PerfMonitor::tterm()
 {
-    perf_flow = nullptr;
     perf_flow_ip = nullptr;
-    perf_event = nullptr;
 
     while (!trackers->empty())
     {
@@ -242,16 +239,21 @@ void perf_monitor_idle_process()
 static bool ready_to_process(Packet* p)
 {
     static THREAD_LOCAL time_t sample_time = 0;
-    static THREAD_LOCAL time_t cur_time;
+    static THREAD_LOCAL time_t cur_time = 0;
     static THREAD_LOCAL uint64_t cnt = 0;
 
+    // FIXIT-M find a more graceful way to handle idle processing being called prior to receiving
+    // packets and issues with more general lack of synchronization between OS time and incoming
+    // packet timestamps.
     if (p)
     {
         cnt++;
         cur_time = p->pkth->ts.tv_sec;
     }
-    else
+    else if (cur_time)
         cur_time = time(nullptr);
+    else
+        return false;
 
     if (!sample_time)
         sample_time = cur_time;
@@ -279,19 +281,10 @@ static void mod_dtor(Module* m)
 { delete m; }
 
 static Inspector* pm_ctor(Module* m)
-{
-    static THREAD_LOCAL unsigned s_init = true;
-
-    if ( !s_init )
-        return nullptr;
-
-    return new PerfMonitor((PerfMonModule*)m);
-}
+{ return new PerfMonitor((PerfMonModule*)m); }
 
 static void pm_dtor(Inspector* p)
-{
-    delete p;
-}
+{ delete p; }
 
 static const InspectApi pm_api =
 {
@@ -326,7 +319,7 @@ const BaseApi* nin_perf_monitor = &pm_api.base;
 #ifdef UNIT_TEST
 TEST_CASE("Process timing logic", "[perfmon]")
 {
-    Packet p;
+    Packet p(false);
     DAQ_PktHdr_t pkth;
     p.pkth = &pkth;
 

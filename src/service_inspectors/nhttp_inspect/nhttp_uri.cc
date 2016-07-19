@@ -23,6 +23,7 @@
 #include <stdio.h>
 
 #include "nhttp_enum.h"
+#include "nhttp_module.h"
 #include "nhttp_uri.h"
 
 using namespace NHttpEnums;
@@ -68,8 +69,8 @@ void NHttpUri::parse_uri()
         // Find the "://" and then the "/"
         int j;
         int k;
-        for (j = 0; (uri.start[j] != ':') && (j < uri.length); j++);
-        for (k = j+3; (uri.start[k] != '/') && (k < uri.length); k++);
+        for (j = 0; (j < uri.length) && (uri.start[j] != ':'); j++);
+        for (k = j+3; (k < uri.length) && (uri.start[k] != '/'); k++);
         if ((k < uri.length) && (uri.start[j+1] == '/') && (uri.start[j+2] == '/'))
         {
             uri_type = URI_ABSOLUTE;
@@ -101,8 +102,8 @@ void NHttpUri::parse_authority()
         return;
     }
     host.start = authority.start;
-    for (host.length = 0; (authority.start[host.length] != ':') && (host.length <
-        authority.length); host.length++);
+    for (host.length = 0; (host.length < authority.length) &&
+        (authority.start[host.length] != ':'); host.length++);
     if (host.length < authority.length)
     {
         port.length = authority.length - host.length - 1;
@@ -124,8 +125,8 @@ void NHttpUri::parse_abs_path()
         return;
     }
     path.start = abs_path.start;
-    for (path.length = 0; (abs_path.start[path.length] != '?') && (abs_path.start[path.length] !=
-        '#') && (path.length < abs_path.length); path.length++);
+    for (path.length = 0; (path.length < abs_path.length) && (abs_path.start[path.length] != '?')
+        && (abs_path.start[path.length] != '#'); path.length++);
     if (path.length == abs_path.length)
     {
         query.length = STAT_NOT_PRESENT;
@@ -135,8 +136,8 @@ void NHttpUri::parse_abs_path()
     if (abs_path.start[path.length] == '?')
     {
         query.start = abs_path.start + path.length + 1;
-        for (query.length = 0; (query.start[query.length] != '#') && (query.length <
-            abs_path.length - path.length - 1); query.length++);
+        for (query.length = 0; (query.length < abs_path.length - path.length - 1) &&
+            (query.start[query.length] != '#'); query.length++);
         if (abs_path.length - path.length - 1 - query.length == 0)
         {
             fragment.length = STAT_NOT_PRESENT;
@@ -177,6 +178,7 @@ void NHttpUri::normalize()
     if (!((infractions & INF_URI_NEED_NORM_PATH)  || (infractions & INF_URI_NEED_NORM_HOST) ||
           (infractions & INF_URI_NEED_NORM_QUERY) || (infractions & INF_URI_NEED_NORM_FRAGMENT)))
     {
+        // This URI is OK, normalization not required
         host_norm = host;
         path_norm = path;
         query_norm = query;
@@ -184,6 +186,8 @@ void NHttpUri::normalize()
         classic_norm = uri;
         return;
     }
+
+    NHttpModule::increment_peg_counts(PEG_URI_NORM);
 
     // Create a new buffer containing the normalized URI by normalizing each individual piece.
     const uint32_t total_length = uri.length + UriNormalizer::URI_NORM_EXPANSION;
@@ -260,6 +264,20 @@ void NHttpUri::normalize()
         current += fragment_norm.length;
     }
     assert(current - new_buf <= total_length);
+
+    if ((infractions & INF_URI_MULTISLASH) || (infractions & INF_URI_SLASH_DOT) ||
+        (infractions & INF_URI_SLASH_DOT_DOT))
+    {
+        NHttpModule::increment_peg_counts(PEG_URI_PATH);
+    }
+
+    if ((infractions & INF_URI_U_ENCODE) || (infractions & INF_URI_UNKNOWN_PERCENT) ||
+        (infractions & INF_URI_PERCENT_UNRESERVED) || (infractions & INF_URI_PERCENT_UTF8_2B) ||
+        (infractions & INF_URI_PERCENT_UTF8_3B) || (infractions & INF_URI_DOUBLE_DECODE))
+    {
+        NHttpModule::increment_peg_counts(PEG_URI_CODING);
+    }
+
     classic_norm.set(current - new_buf, new_buf);
     classic_norm_allocated = true;
 }

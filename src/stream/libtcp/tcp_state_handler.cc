@@ -32,13 +32,13 @@ using namespace std;
 #include "stream_tcp_unit_test.h"
 #endif
 
-TcpStateHandler::TcpStateHandler(TcpStreamTracker::TcpState state, TcpStateMachine& tsm,
-    TcpStreamSession& ssn) : tsm(&tsm), tcp_state(state), session(ssn)
+TcpStateHandler::TcpStateHandler(TcpStreamTracker::TcpState state, TcpStateMachine& tsm)
+    : tsm(&tsm), tcp_state(state)
 {
     tsm.register_state_handler(state, *this);
 }
 
-//TcpStateHandler::TcpStateHandler(void) :
+//TcpStateHandler::TcpStateHandler() :
 //    tsm(nullptr), tcp_state(TcpStreamTracker::TCP_CLOSED), session(*(new
 // TcpStreamSession(nullptr)))
 //{
@@ -49,12 +49,12 @@ TcpStateHandler::~TcpStateHandler()
     // TODO Auto-generated destructor stub
 }
 
-bool TcpStateHandler::do_pre_sm_packet_actions(TcpSegmentDescriptor&)
+bool TcpStateHandler::do_pre_sm_packet_actions(TcpSegmentDescriptor&, TcpStreamTracker&)
 {
     return true;
 }
 
-bool TcpStateHandler::do_post_sm_packet_actions(TcpSegmentDescriptor&)
+bool TcpStateHandler::do_post_sm_packet_actions(TcpSegmentDescriptor&, TcpStreamTracker&)
 {
     return true;
 }
@@ -126,7 +126,7 @@ bool TcpStateHandler::default_state_action(TcpSegmentDescriptor& tsd, TcpStreamT
 {
 #ifdef DEBUG_MSGS
     DebugFormat(DEBUG_STREAM_STATE, "tsd: %p tracker: %p state: %u event: %u\n",
-        &tsd, &tracker, tracker.get_tcp_state(), tracker.get_tcp_event() );
+        (void*) &tsd, (void*) &tracker, tracker.get_tcp_state(), tracker.get_tcp_event() );
 #else
     UNUSED(tsd);
     UNUSED(tracker);
@@ -195,7 +195,7 @@ bool TcpStateHandler::rst_recv(TcpSegmentDescriptor& tsd, TcpStreamTracker& trac
     return default_state_action(tsd, tracker);
 }
 
-// FIXIT - get the unit test working again
+// FIXIT-H get the unit test working again
 #ifdef UNIT_TEST_FOO
 
 SCENARIO("TCP State Handler Base Class", "[state_handlers][stream_tcp]")

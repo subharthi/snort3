@@ -35,11 +35,11 @@
 **      - Initial development.  DJR
 */
 #include <stdio.h>
-#include <string.h>
 #include <zlib.h>
 
 #include "hi_stream_splitter.h"
 #include "main/thread.h"
+#include "utils/safec.h"
 #include "utils/util_utf.h"
 
 static THREAD_LOCAL bool headers = false;
@@ -53,7 +53,6 @@ static THREAD_LOCAL uint8_t dechunk_buffer[65535];
 #include "hi_si.h"
 
 #include "detection/detection_util.h"
-#include "utils/snort_bounds.h"
 #include "utils/util_unfold.h"
 #include "protocols/tcp.h"
 
@@ -87,7 +86,7 @@ static THREAD_LOCAL uint8_t dechunk_buffer[65535];
             COOKIE_PTR* cookie = Server->response.cookie.next; \
             do { \
                 Server->response.cookie.next = Server->response.cookie.next->next; \
-                free(cookie); \
+                snort_free(cookie); \
                 cookie = Server->response.cookie.next; \
             } while (cookie); \
         } \
@@ -880,22 +879,19 @@ static void SetGzipBuffers(HttpSessionData* hsd, HI_SESSION* session)
         && (session != NULL) && (session->server_conf != NULL)
         && (session->global_conf != NULL) && session->server_conf->extract_gzip)
     {
-        hsd->decomp_state = (DECOMPRESS_STATE*)calloc(1, sizeof(*hsd->decomp_state));
+        hsd->decomp_state = (DECOMPRESS_STATE*)snort_calloc(sizeof(*hsd->decomp_state));
 
-        if ( hsd->decomp_state )
+        if (session->server_conf->unlimited_decompress)
         {
-            if (session->server_conf->unlimited_decompress)
-            {
-                hsd->decomp_state->compr_depth = MAX_GZIP_DEPTH;
-                hsd->decomp_state->decompr_depth = MAX_GZIP_DEPTH;
-            }
-            else
-            {
-                hsd->decomp_state->compr_depth = session->global_conf->compr_depth;
-                hsd->decomp_state->decompr_depth = session->global_conf->decompr_depth;
-            }
-            hsd->decomp_state->inflate_init = 0;
+            hsd->decomp_state->compr_depth = MAX_GZIP_DEPTH;
+            hsd->decomp_state->decompr_depth = MAX_GZIP_DEPTH;
         }
+        else
+        {
+            hsd->decomp_state->compr_depth = session->global_conf->compr_depth;
+            hsd->decomp_state->decompr_depth = session->global_conf->decompr_depth;
+        }
+        hsd->decomp_state->inflate_init = 0;
     }
 }
 
@@ -1260,9 +1256,8 @@ static int HttpResponseInspection(HI_SESSION* session, Packet* p, const unsigned
      */
     int not_stream_insert = 1;
     int parse_cont_encoding = 1;
-    int status;
     int expected_pkt = 0;
-    int alt_dsize;
+    unsigned alt_dsize;
     uint32_t seq_num = 0;
 
     if (!session || !p || !data || (dsize == 0))
@@ -1648,16 +1643,16 @@ static int HttpResponseInspection(HI_SESSION* session, Packet* p, const unsigned
               hi_server_inspect_body */
             if (sd && sd->decomp_state && sd->decomp_state->decompress_data)
             {
-                status = SafeMemcpy(HttpDecodeBuf.data, Server->response.body,
-                    alt_dsize, HttpDecodeBuf.data, HttpDecodeBuf.data +
-                    sizeof(HttpDecodeBuf.data));
-                if (status != SAFEMEM_SUCCESS)
+                if (alt_dsize > sizeof(HttpDecodeBuf.data))
                 {
                     CLR_SERVER_HEADER(Server);
                     CLR_SERVER_STAT_MSG(Server);
                     CLR_SERVER_STAT(Server);
                     return HI_MEM_ALLOC_FAIL;
                 }
+
+                memcpy_s(HttpDecodeBuf.data, sizeof(HttpDecodeBuf.data),
+                    Server->response.body, alt_dsize);
 
                 SetHttpDecode((uint16_t)alt_dsize);
                 Server->response.body = HttpDecodeBuf.data;

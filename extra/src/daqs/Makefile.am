@@ -1,8 +1,9 @@
+SUBDIRS = \
+daq_socket
 
-daqlibdir = $(pkglibdir)/daqs
+AM_CPPFLAGS = @AM_CPPFLAGS@
+AM_CFLAGS = @AM_CFLAGS@
+AM_CXXFLAGS = @AM_CXXFLAGS@
 
-daqlib_LTLIBRARIES = daq_socket.la
-daq_socket_la_CFLAGS = -DBUILDING_SO
-daq_socket_la_LDFLAGS = -module -export-dynamic -avoid-version -shared
-daq_socket_la_SOURCES = daq_socket.c
+#SNORT3_CFLAGS = @SNORT3_CFLAGS@
 

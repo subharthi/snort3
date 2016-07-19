@@ -69,7 +69,7 @@ protected:
     NHttpFlowData* const session_data;
     const NHttpEnums::SourceId source_id;
     Flow* const flow;
-    uint64_t msg_num;
+    uint64_t trans_num;
     const NHttpParaList* const params;
     NHttpTransaction* const transaction;
     const bool tcp_close;
@@ -87,6 +87,7 @@ protected:
 #ifdef REG_TEST
     void print_section_title(FILE* output, const char* title) const;
     void print_section_wrapup(FILE* output) const;
+    void print_peg_counts(FILE* output) const;
 #endif
 
 private:

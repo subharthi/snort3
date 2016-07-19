@@ -29,8 +29,8 @@ class TcpSession;
 class TcpStateEstablished : public TcpStateHandler
 {
 public:
-    TcpStateEstablished(TcpStateMachine&, TcpSession&);
-    virtual ~TcpStateEstablished(void);
+    TcpStateEstablished(TcpStateMachine&);
+    virtual ~TcpStateEstablished();
 
     bool syn_sent(TcpSegmentDescriptor&, TcpStreamTracker&) override;
     bool syn_recv(TcpSegmentDescriptor&, TcpStreamTracker&) override;
@@ -45,8 +45,8 @@ public:
     bool rst_sent(TcpSegmentDescriptor&, TcpStreamTracker&) override;
     bool rst_recv(TcpSegmentDescriptor&, TcpStreamTracker&) override;
 
-    bool do_pre_sm_packet_actions(TcpSegmentDescriptor&) override;
-    bool do_post_sm_packet_actions(TcpSegmentDescriptor&) override;
+    bool do_pre_sm_packet_actions(TcpSegmentDescriptor&, TcpStreamTracker&) override;
+    bool do_post_sm_packet_actions(TcpSegmentDescriptor&, TcpStreamTracker&) override;
 };
 
 #endif

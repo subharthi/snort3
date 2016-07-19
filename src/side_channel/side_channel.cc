@@ -31,6 +31,7 @@
 #include <time.h>
 #include <thread>
 #include <vector>
+#include <utility>
 
 #include "main/snort_debug.h"
 #include "managers/connector_manager.h"
@@ -78,6 +79,9 @@ SideChannel::SideChannel()
     DebugMessage(DEBUG_SIDE_CHANNEL,"SideChannel::SideChannel()\n");
     sequence = 0;
     default_port = 0;
+    connector_receive = nullptr;
+    connector_transmit = nullptr;
+    receive_handler = nullptr;
 }
 
 SideChannel::~SideChannel()
@@ -87,8 +91,9 @@ SideChannel::~SideChannel()
 
 void SideChannel::set_message_port(SCMessage* msg, SCPort port)
 {
-    if ( msg != nullptr )
-        msg->hdr->port = port;
+    assert ( msg );
+    assert ( msg->hdr );
+    msg->hdr->port = port;
 }
 
 void SideChannel::set_default_port(SCPort port)
@@ -173,7 +178,24 @@ void SideChannelManager::thread_term()
     // First shutdown the connectors
     ConnectorManager::thread_term();
 
-    delete tls_maps;
+    if (tls_maps)
+    {
+        for ( auto& map : *tls_maps )
+        {
+            delete map->sc;
+            delete map;
+        }
+
+        delete tls_maps;
+    }
+}
+
+void SideChannelManager::term()
+{
+    for ( auto& scm : s_maps )
+        delete scm;
+
+    s_maps.clear();
 }
 
 // receive at most max_messages.  Zero indicates unlimited.
@@ -257,6 +279,7 @@ bool SideChannel::discard_message(SCMessage* msg)
     assert(msg->handle);
 
     msg->connector->discard_message (msg->handle);
+    delete msg;
     return true;
 }
 
@@ -274,6 +297,7 @@ bool SideChannel::transmit_message(SCMessage* msg)
         msg->hdr->sequence = sequence++;
 
         return_value = connector_transmit->transmit_message(msg->handle);
+        delete msg;
     }
 
     DebugFormat(DEBUG_SIDE_CHANNEL,"SideChannelManager::transmit_message(): return: %d\n",
@@ -281,3 +305,13 @@ bool SideChannel::transmit_message(SCMessage* msg)
     return return_value;
 }
 
+Connector::Direction SideChannel::get_direction()
+{
+    if ( connector_receive && connector_transmit )
+        return Connector::CONN_DUPLEX;
+    if ( connector_receive && !connector_transmit )
+        return Connector::CONN_RECEIVE;
+    if ( !connector_receive && connector_transmit )
+        return Connector::CONN_TRANSMIT;
+    return Connector::CONN_UNDEFINED;
+}

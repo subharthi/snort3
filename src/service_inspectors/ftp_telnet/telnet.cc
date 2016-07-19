@@ -23,28 +23,16 @@
 #include "config.h"
 #endif
 
-#include <assert.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/types.h>
-
-#include "pp_telnet.h"
-#include "ftpp_si.h"
-#include "ftpp_ui_config.h"
-#include "ftpp_return_codes.h"
 #include "ft_main.h"
 #include "ftp_print.h"
+#include "ftpp_return_codes.h"
+#include "ftpp_si.h"
+#include "ftpp_ui_config.h"
+#include "pp_telnet.h"
 #include "telnet_module.h"
 
 #include "log/messages.h"
-#include "main/snort_types.h"
-#include "main/snort_debug.h"
 #include "profiler/profiler.h"
-#include "stream/stream_api.h"
-#include "file_api/file_api.h"
-#include "parser/parser.h"
-#include "framework/inspector.h"
-#include "utils/sfsnprintfappend.h"
 
 THREAD_LOCAL ProfileStats telnetPerfStats;
 THREAD_LOCAL SimpleStats tnstats;
@@ -139,11 +127,11 @@ static int snort_telnet(TELNET_PROTO_CONF* GlobalConf, Packet* p)
                 }
                 else
                 {
-                    if ( p->packet_flags & PKT_FROM_SERVER )
+                    if ( p->is_from_server() )
                     {
                         iInspectMode = FTPP_SI_SERVER_MODE;
                     }
-                    else if ( p->packet_flags & PKT_FROM_CLIENT )
+                    else if ( p->is_from_client() )
                     {
                         iInspectMode = FTPP_SI_CLIENT_MODE;
                     }

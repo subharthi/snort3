@@ -114,8 +114,8 @@ int Norm_Packet(NormalizerConfig* c, Packet* p)
 
     while ( lyr > 0 )
     {
-        uint16_t proto = p->layers[--lyr].prot_id;
-        NormalFunc n = c->normalizers[PacketManager::proto_id(proto)];
+        ProtocolId proto_id = p->layers[--lyr].prot_id;
+        NormalFunc n = c->normalizers[PacketManager::proto_idx(proto_id)];
 
         if ( n )
             changes = n(c, p, lyr, changes);
@@ -163,10 +163,10 @@ static int Norm_Eth(Packet* p, uint8_t layer, int changes)
 #define ETH_MIN_LEN 60
 
 static inline NormMode get_norm_mode(const NormalizerConfig* const c, const Packet * const p)
-{ 
+{
     NormMode mode = c->norm_mode;
 
-    if ( DAQ_GetInterfaceMode(p->pkth) != DAQ_MODE_INLINE )
+    if ( !SFDAQ::forwarding_packet(p->pkth) )
         mode = NORM_MODE_TEST;
 
     return mode;
@@ -630,25 +630,25 @@ int Norm_SetConfig(NormalizerConfig* nc)
     }
     if ( Norm_IsEnabled(nc, (NormFlags)NORM_IP4_ANY) )
     {
-        nc->normalizers[PacketManager::proto_id(ETHERTYPE_IPV4)] = Norm_IP4;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::ETHERTYPE_IPV4)] = Norm_IP4;
     }
     if ( Norm_IsEnabled(nc, NORM_ICMP4) )
     {
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_ICMPV4)] = Norm_ICMP4;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::ICMPV4)] = Norm_ICMP4;
     }
     if ( Norm_IsEnabled(nc, (NormFlags)NORM_IP6_ANY) )
     {
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_IPV6)] = Norm_IP6;
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_HOPOPTS)] = Norm_IP6_Opts;
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_DSTOPTS)] = Norm_IP6_Opts;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::IPV6)] = Norm_IP6;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::HOPOPTS)] = Norm_IP6_Opts;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::DSTOPTS)] = Norm_IP6_Opts;
     }
     if ( Norm_IsEnabled(nc, NORM_ICMP6) )
     {
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_ICMPV6)] = Norm_ICMP6;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::ICMPV6)] = Norm_ICMP6;
     }
     if ( Norm_IsEnabled(nc, (NormFlags)NORM_TCP_ANY) )
     {
-        nc->normalizers[PacketManager::proto_id(IPPROTO_ID_TCP)] = Norm_TCP;
+        nc->normalizers[PacketManager::proto_idx(ProtocolId::TCP)] = Norm_TCP;
     }
     return 0;
 }

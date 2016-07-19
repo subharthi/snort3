@@ -45,6 +45,9 @@ void show_stats(PegCount*, const PegInfo*, unsigned, const char*) { }
 void mix_str(uint32_t& a, uint32_t&, uint32_t&, const char* s, unsigned)
 { a += strlen(s); }
 
+Packet::Packet(bool) { }
+Packet::~Packet() { }
+
 Cursor::Cursor(Packet* p)
 { set("pkt_data", p->data, p->dsize); }
 
@@ -88,6 +91,9 @@ MemoryContext::MemoryContext(MemoryTracker&) { }
 MemoryContext::~MemoryContext() { }
 
 void show_stats(PegCount*, const PegInfo*, IndexVec&, const char*, FILE*) { }
+
+char* snort_strdup(const char* s)
+{ return strdup(s); }
 
 //-------------------------------------------------------------------------
 // helpers

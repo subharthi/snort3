@@ -90,6 +90,7 @@ StreamSplitter::Status NHttpStreamSplitter::scan(Flow* flow, const uint8_t* data
     if (session_data == nullptr)
     {
         flow->set_application_data(session_data = new NHttpFlowData);
+        NHttpModule::increment_peg_counts(PEG_FLOW);
     }
 
     SectionType type = session_data->type_expected[source_id];
@@ -120,9 +121,11 @@ StreamSplitter::Status NHttpStreamSplitter::scan(Flow* flow, const uint8_t* data
 
     assert(!session_data->tcp_close[source_id]);
 
+    NHttpModule::increment_peg_counts(PEG_SCAN);
+
     // Check for 0.9 response message
     if ((type == SEC_STATUS) &&
-        (session_data->expected_msg_num[SRC_SERVER] == session_data->zero_nine_expected))
+        (session_data->expected_trans_num[SRC_SERVER] == session_data->zero_nine_expected))
     {
         // 0.9 response is a body that runs to connection end with no headers. NHttpInspect does
         // not support no headers. Processing this imaginary status line and empty headers allows
@@ -150,8 +153,7 @@ StreamSplitter::Status NHttpStreamSplitter::scan(Flow* flow, const uint8_t* data
         if (cutter->get_octets_seen() == MAX_OCTETS)
         {
             session_data->infractions[source_id] += INF_ENDLESS_HEADER;
-            // FIXIT-H suspicion that this alert is never generated.
-            session_data->events[source_id].create_event(EVENT_LOSS_OF_SYNC);
+            session_data->events[source_id].generate_misformatted_http(data, length);
             // FIXIT-H need to process this data not just discard it.
             session_data->type_expected[source_id] = SEC_ABORT;
             delete cutter;

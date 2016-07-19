@@ -26,20 +26,22 @@
 #include "tcp_module.h"
 #include "tcp_normalizers.h"
 #include "tcp_reassemblers.h"
+#include "tcp_session.h"
 
-TcpTracker::TcpTracker(bool client) :
+TcpTracker::TcpTracker(bool client, TcpSession* ssn) :
     TcpStreamTracker(client)
 {
+    session = ssn;
 }
 
-TcpTracker::~TcpTracker(void)
+TcpTracker::~TcpTracker()
 {
     delete splitter;
     delete normalizer;
     delete reassembler;
 }
 
-void TcpTracker::init_tracker(void)
+void TcpTracker::init_tcp_state(void )
 {
     tcp_state = ( client_tracker ) ?
         TcpStreamTracker::TCP_STATE_NONE : TcpStreamTracker::TCP_LISTEN;
@@ -54,7 +56,10 @@ void TcpTracker::init_tracker(void)
     memset(&mac_addr, 0, sizeof(mac_addr));
     mac_addr_valid = false;
     rst_pkt_sent = false;
+}
 
+void TcpTracker::init_toolbox()
+{
     delete splitter;
     splitter = nullptr;
     delete normalizer;
@@ -67,14 +72,14 @@ void TcpTracker::init_tracker(void)
 // flush policy stuff
 //-------------------------------------------------------------------------
 
-void TcpTracker::init_flush_policy(void)
+void TcpTracker::init_flush_policy()
 {
     if ( splitter == nullptr )
         flush_policy = STREAM_FLPOLICY_IGNORE;
-    else if ( !normalizer->is_tcp_ips_enabled() )
-        flush_policy = STREAM_FLPOLICY_ON_ACK;
-    else
+    else if ( normalizer->is_tcp_ips_enabled() )
         flush_policy = STREAM_FLPOLICY_ON_DATA;
+    else
+        flush_policy = STREAM_FLPOLICY_ON_ACK;
 }
 
 void TcpTracker::set_splitter(StreamSplitter* ss)
@@ -101,6 +106,12 @@ void TcpTracker::set_splitter(const Flow* flow)
         set_splitter(ins->get_splitter(!client_tracker) );
     else
         set_splitter(new AtomSplitter(!client_tracker) );
+}
+
+void TcpTracker::reset_splitter( void )
+{
+    if ( splitter )
+        splitter->reset();
 }
 
 void TcpTracker::init_on_syn_sent(TcpSegmentDescriptor& tsd)
@@ -137,7 +148,7 @@ void TcpTracker::init_on_syn_recv(TcpSegmentDescriptor& tsd)
     Profile profile(s5TcpNewSessPerfStats);
 
     irs = tsd.get_seg_seq();
-    // FIXIT - can we really set the vars below now?
+    // FIXIT-H can we really set the vars below now?
     r_nxt_ack = tsd.get_seg_seq() + 1;
     r_win_base = tsd.get_seg_seq() + 1;
     reassembler->set_seglist_base_seq(tsd.get_seg_seq() + 1);
@@ -268,7 +279,7 @@ void TcpTracker::init_on_data_seg_sent(TcpSegmentDescriptor& tsd)
     else
         flow->set_session_flags(SSNFLAG_SEEN_SERVER);
 
-    // FIXIT - should we init these?
+    // FIXIT-H should we init these?
     iss = tsd.get_seg_seq();
     irs = tsd.get_seg_ack();
     snd_una = tsd.get_seg_seq();
@@ -321,7 +332,7 @@ void TcpTracker::finish_server_init(TcpSegmentDescriptor& tsd)
     snd_nxt = tsd.get_end_seq();
     snd_wnd = tsd.get_seg_wnd();
 
-    // FIXIT - move this to fin handler for syn_recv state ..
+    // FIXIT-H move this to fin handler for syn_recv state ..
     //if ( tcph->is_fin() )
     //    server->set_snd_nxt(server->get_snd_nxt() - 1);
 
@@ -369,7 +380,7 @@ void TcpTracker::update_tracker_ack_sent(TcpSegmentDescriptor& tsd)
     // as is l_unackd is the "last left" seq recvd
     //snd_una = tsd.get_seg_seq();
 
-    // FIXIT - add check to validate ack...
+    // FIXIT-H add check to validate ack...
 
     if ( SEQ_GT(tsd.get_end_seq(), snd_nxt) )
         snd_nxt = tsd.get_end_seq();
@@ -445,7 +456,7 @@ bool TcpTracker::update_on_rst_recv(TcpSegmentDescriptor& tsd)
     return good_rst;
 }
 
-void TcpTracker::update_on_rst_sent(void)
+void TcpTracker::update_on_rst_sent()
 {
     tcp_state = TcpStreamTracker::TCP_CLOSED;
     rst_pkt_sent = true;
@@ -585,7 +596,7 @@ bool TcpTracker::is_segment_seq_valid(TcpSegmentDescriptor& tsd)
     return valid_seq;
 }
 
-void TcpTracker::print(void)
+void TcpTracker::print()
 {
     LogMessage(" + TcpTracker +\n");
     LogMessage("    state:              %s\n", tcp_state_names[ tcp_state ]);

@@ -237,26 +237,26 @@ static void AlertSyslog(
         if (SnortConfig::alert_interface())
         {
             SnortSnprintfAppend(event_string, sizeof(event_string),
-                "<%s> ", PRINT_INTERFACE(DAQ_GetInterfaceSpec()));
+                "<%s> ", PRINT_INTERFACE(SFDAQ::get_interface_spec()));
         }
     }
     if ((p != NULL) && p->ptrs.ip_api.is_ip())
     {
-        uint16_t proto = p->get_ip_proto_next();
-        if (protocol_names[proto] != NULL)
+        IpProtocol ip_proto = p->get_ip_proto_next();
+        if (protocol_names[to_utype(ip_proto)] != NULL)
         {
             SnortSnprintfAppend(event_string, sizeof(event_string),
-                "{%s} ", protocol_names[proto]);
+                "{%s} ", protocol_names[to_utype(ip_proto)]);
         }
         else
         {
             SnortSnprintfAppend(event_string, sizeof(event_string),
-                "{%d} ", proto);
+                "{%d} ", static_cast<uint8_t>(ip_proto));
         }
 
         if ((p->ptrs.decode_flags & DECODE_FRAG)
-            || ((proto != IPPROTO_TCP)
-            && (proto != IPPROTO_UDP)))
+            || ((ip_proto != IpProtocol::TCP)
+            && (ip_proto != IpProtocol::UDP)))
         {
             const char* ip_fmt = "%s -> %s";
 

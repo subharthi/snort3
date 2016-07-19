@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------
-// Copyright (C) 2015-2015 Cisco and/or its affiliates. All rights reserved.
+// Copyright (C) 2015-2016 Cisco and/or its affiliates. All rights reserved.
 //
 // This program is free software; you can redistribute it and/or modify it
 // under the terms of the GNU General Public License Version 2 as published
@@ -25,7 +25,7 @@
 
 #include "tcp_stream_session.h"
 
-#ifdef DEBUG
+#ifdef DEBUG_MSGS
 const char* const flush_policy_names[] =
 {
     "ignore",
@@ -38,7 +38,7 @@ TcpStreamSession::TcpStreamSession(Flow* flow) : Session(flow)
 {
 }
 
-TcpStreamSession::~TcpStreamSession(void)
+TcpStreamSession::~TcpStreamSession()
 {
     if (tcp_init)
     {
@@ -49,7 +49,7 @@ TcpStreamSession::~TcpStreamSession(void)
 
 void TcpStreamSession::init_new_tcp_session(TcpSegmentDescriptor& tsd)
 {
-    flow->protocol = tsd.get_pkt()->type();
+    flow->pkt_type = tsd.get_pkt()->type();
 
     /* New session, previous was marked as reset.  Clear the reset flag. */
     flow->clear_session_flags(SSNFLAG_RESET);
@@ -62,7 +62,7 @@ void TcpStreamSession::init_new_tcp_session(TcpSegmentDescriptor& tsd)
     lws_init = true;
 }
 
-void TcpStreamSession::update_session_on_syn_ack(void)
+void TcpStreamSession::update_session_on_syn_ack()
 {
     /* If session is already marked as established */
     if ( !( flow->session_state & STREAM_STATE_ESTABLISHED ) )
@@ -76,7 +76,7 @@ void TcpStreamSession::update_session_on_syn_ack(void)
     }
 }
 
-void TcpStreamSession::update_session_on_ack(void)
+void TcpStreamSession::update_session_on_ack()
 {
     /* If session is already marked as established */
     if ( !( flow->session_state & STREAM_STATE_ESTABLISHED ) )
@@ -142,7 +142,7 @@ void TcpStreamSession::update_session_on_client_packet(TcpSegmentDescriptor& tsd
         flow->set_ttl(tsd.get_pkt(), true);
 }
 
-uint8_t TcpStreamSession::get_reassembly_direction(void)
+uint8_t TcpStreamSession::get_reassembly_direction()
 {
     uint8_t dir = SSN_DIR_NONE;
 
@@ -258,7 +258,7 @@ void TcpStreamSession::update_direction(char dir, const sfip_t* ip, uint16_t por
     server = tracker;
 }
 
-// FIXIT add alert and check alerted go away when we finish
+// FIXIT-H add alert and check alerted go away when we finish
 // packet / PDU split because PDU rules won't run on raw packets
 bool TcpStreamSession::add_alert(Packet* p, uint32_t gid, uint32_t sid)
 {
@@ -349,7 +349,7 @@ void TcpStreamSession::SetPacketHeaderFoo(const Packet* p)
         egress_index = p->pkth->egress_index;
         egress_group = p->pkth->egress_group;
     }
-    else if ( p->packet_flags & PKT_FROM_CLIENT )
+    else if ( p->is_from_client() )
     {
         ingress_index = p->pkth->ingress_index;
         ingress_group = p->pkth->ingress_group;
@@ -386,7 +386,7 @@ void TcpStreamSession::GetPacketHeaderFoo(DAQ_PktHdr_t* pkth, uint32_t dir)
     pkth->address_space_id = address_space_id;
 }
 
-void TcpStreamSession::SwapPacketHeaderFoo(void)
+void TcpStreamSession::SwapPacketHeaderFoo()
 {
     if ( egress_index != DAQ_PKTHDR_UNKNOWN )
     {
@@ -402,10 +402,10 @@ void TcpStreamSession::SwapPacketHeaderFoo(void)
     }
 }
 
-void TcpStreamSession::reset(void)
+void TcpStreamSession::reset()
 {
     if (tcp_init)
-        clear_session(2);
+        clear_session(true, false, false );
 }
 
 bool TcpStreamSession::setup(Packet*)
@@ -413,8 +413,8 @@ bool TcpStreamSession::setup(Packet*)
     // FIXIT-L this it should not be necessary to reset here
     reset();
 
-    client->init_tracker( );
-    server->init_tracker( );
+    client->init_tcp_state();
+    server->init_tcp_state();
     lws_init = tcp_init = false;
     no_3whs = false;
     pkt_action_mask = ACTION_NOTHING;
@@ -422,21 +422,21 @@ bool TcpStreamSession::setup(Packet*)
     ingress_index = egress_index = 0;
     ingress_group = egress_group = 0;
     daq_flags = address_space_id = 0;
+    config = nullptr;
 
     return true;
 }
 
-void TcpStreamSession::cleanup(void)
+void TcpStreamSession::cleanup()
 {
-    // this flushes data and then calls TcpSessionClear()
-    cleanup_session(1);
+    clear_session( true, true, false );
 }
 
-void TcpStreamSession::clear(void)
+void TcpStreamSession::clear()
 {
     if ( tcp_init )
         // this does NOT flush data
-        clear_session(1);
+        clear_session( true, false, false );
 }
 
 void TcpStreamSession::set_splitter(bool to_server, StreamSplitter* ss)
@@ -454,7 +454,7 @@ StreamSplitter* TcpStreamSession::get_splitter(bool to_server)
         return client->splitter;
 }
 
-void TcpStreamSession::start_proxy(void)
+void TcpStreamSession::start_proxy()
 {
     config->policy = StreamPolicy::OS_PROXY;
 }
@@ -463,27 +463,22 @@ void TcpStreamSession::start_proxy(void)
 // tcp module stuff
 //-------------------------------------------------------------------------
 
-void TcpStreamSession::set_memcap(Memcap& mc)
+void TcpStreamSession::sinit()
 {
-    tcp_memcap = &mc;
-}
-
-void TcpStreamSession::sinit(void)
-{
-    s5_pkt = PacketManager::encode_new();
+    s5_pkt = new Packet();
     //AtomSplitter::init();  // FIXIT-L PAF implement
 }
 
-void TcpStreamSession::sterm(void)
+void TcpStreamSession::sterm()
 {
     if (s5_pkt)
     {
-        PacketManager::encode_delete(s5_pkt);
+        delete s5_pkt;
         s5_pkt = nullptr;
     }
 }
 
-void TcpStreamSession::print(void)
+void TcpStreamSession::print()
 {
     char buf[64];
 
@@ -501,15 +496,4 @@ void TcpStreamSession::print(void)
     server->print();
 }
 
-void TcpStreamSession::cleanup_session(int, Packet*)
-{
-}
-
-void TcpStreamSession::set_os_policy(void)
-{
-}
-
-void TcpStreamSession::clear_session(int)
-{
-}
 

@@ -35,31 +35,18 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "tag.h"
-#include "pcrm.h"
-#include "fp_create.h"
-#include "fp_detect.h"
-#include "signature.h"
-#include "detection_util.h"
 #include "detection_defines.h"
+#include "fp_detect.h"
+#include "tag.h"
 
-#include "main/snort_types.h"
-#include "main/snort_debug.h"
-#include "main/snort_config.h"
-#include "main/analyzer.h"
-#include "utils/util.h"
-#include "ports/port_object.h"
-#include "filters/sfthreshold.h"
-#include "events/event_wrapper.h"
-#include "events/event_queue.h"
 #include "latency/packet_latency.h"
-#include "profiler/profiler.h"
-#include "stream/stream_api.h"
-#include "packet_io/active.h"
-#include "managers/inspector_manager.h"
 #include "managers/event_manager.h"
-#include "protocols/ip.h"
+#include "managers/inspector_manager.h"
+#include "packet_io/active.h"
+#include "ports/port_object.h"
+#include "profiler/profiler_defs.h"
 #include "sfip/sf_ipvar.h"
+#include "utils/stats.h"
 
 #define CHECK_SRC_IP         0x01
 #define CHECK_DST_IP         0x02
@@ -267,10 +254,9 @@ bool snort_detect(Packet* p)
         return false;
     }
 
-    // FIXIT-M:  Curently, if a rule is found on any IP layer, we
-    //          perform the detect routine on the entire packet.
-    //          Instead, we should only perform detect on that
-    //          layer!!
+    // FIXIT-M restrict detect to current ip layer
+    // Curently, if a rule is found on any IP layer, we perform the detect routine
+    // on the entire packet. Instead, we should only perform detect on that layer!!
     switch ( p->type() )
     {
     case PktType::IP:
@@ -351,7 +337,7 @@ static int CheckAddrPort(
         }
     }
 
-    DebugFormat(DEBUG_DETECT, "addr %lx, port %d ", pkt_addr, pkt_port);
+    DebugFormat(DEBUG_DETECT, "addr %s, port %d ", sfip_to_str(pkt_addr), pkt_port);
 
     if (!rule_addr)
         goto bail;

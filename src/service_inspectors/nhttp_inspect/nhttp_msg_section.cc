@@ -23,6 +23,7 @@
 
 #include "nhttp_enum.h"
 #include "nhttp_transaction.h"
+#include "nhttp_test_manager.h"
 #include "nhttp_msg_section.h"
 #include "nhttp_msg_request.h"
 #include "nhttp_msg_status.h"
@@ -40,7 +41,7 @@ NHttpMsgSection::NHttpMsgSection(const uint8_t* buffer, const uint16_t buf_size,
     session_data(session_data_),
     source_id(source_id_),
     flow(flow_),
-    msg_num(session_data->expected_msg_num[source_id]),
+    trans_num(session_data->expected_trans_num[source_id]),
     params(params_),
     transaction(NHttpTransaction::attach_my_transaction(session_data, source_id)),
     tcp_close(session_data->tcp_close[source_id]),
@@ -213,7 +214,7 @@ const Field& NHttpMsgSection::get_classic_buffer(unsigned id, uint64_t sub_id, u
 
 void NHttpMsgSection::print_section_title(FILE* output, const char* title) const
 {
-    fprintf(output, "HTTP message %" PRIu64 " %s:\n", msg_num, title);
+    fprintf(output, "HTTP message %" PRIu64 " %s:\n", trans_num, title);
     msg_text.print(output, "Input");
 }
 
@@ -222,7 +223,27 @@ void NHttpMsgSection::print_section_wrapup(FILE* output) const
     fprintf(output, "Infractions: %016" PRIx64 " %016" PRIx64 ", Events: %016" PRIx64 " %016"
         PRIx64 ", TCP Close: %s\n\n", infractions.get_raw2(), infractions.get_raw(),
         events.get_raw2(), events.get_raw(), tcp_close ? "True" : "False");
+    if (NHttpTestManager::get_show_pegs())
+    {
+        print_peg_counts(output);
+    }
     session_data->show(output);
+    fprintf(output, "\n");
+}
+
+void NHttpMsgSection::print_peg_counts(FILE* output) const
+{
+    const PegInfo* const peg_names = NHttpModule::get_peg_names();
+    const PegCount* const peg_counts = NHttpModule::get_peg_counts();
+
+    fprintf(output, "Peg Counts\n");
+    for (unsigned k = 0; k < PEG_COUNT_MAX; k++)
+    {
+        if (peg_counts[k] > 0)
+        {
+            fprintf(output, "%s: %" PRIu64 "\n", peg_names[k].name, peg_counts[k]);
+        }
+    }
     fprintf(output, "\n");
 }
 

@@ -62,7 +62,6 @@
 #include "framework/inspector.h"
 #include "framework/ips_action.h"
 #include "framework/mpse.h"
-#include "perf_monitor/event_tracker.h"
 #include "filters/sfthreshold.h"
 #include "filters/rate_filter.h"
 #include "events/event_wrapper.h"
@@ -79,6 +78,7 @@
 #include "protocols/udp.h"
 #include "protocols/icmp4.h"
 #include "search_engines/pat_stats.h"
+#include "utils/stats.h"
 
 THREAD_LOCAL ProfileStats rulePerfStats;
 THREAD_LOCAL ProfileStats ruleRTNEvalPerfStats;
@@ -93,35 +93,21 @@ THREAD_LOCAL OTNX_MATCH_DATA t_omd;
 void otnx_match_data_init(int num_rule_types)
 {
     t_omd.iMatchInfoArraySize = num_rule_types;
-    t_omd.matchInfo = (MATCH_INFO*)SnortAlloc(num_rule_types * sizeof(MATCH_INFO));
+    t_omd.matchInfo = (MATCH_INFO*)snort_calloc(num_rule_types, sizeof(MATCH_INFO));
 }
 
 void otnx_match_data_term()
 {
     if ( t_omd.matchInfo )
-        free(t_omd.matchInfo);
+        snort_free(t_omd.matchInfo);
 
     t_omd.matchInfo = nullptr;
 }
 
-/*
-**
-**  NAME
-**    InitMatchInfo::
-**
-**  DESCRIPTION
-**    Initialize the OTNX_MATCH_DATA structure.  We do this for
-**    every packet so calloc is not used as this would zero the
-**    whole space and this only sets the necessary counters to
-**    zero, and saves us time.
-**
-**  FORMAL INPUTS
-**    OTNX_MATCH_DATA * - pointer to structure to init.
-**
-**  FORMAL OUTPUT
-**    None
-**
-*/
+// Initialize the OTNX_MATCH_DATA structure.  We do this for
+// every packet so this only sets the necessary counters to
+// zero which saves us time.
+
 static inline void InitMatchInfo(OTNX_MATCH_DATA* o)
 {
     int i = 0;
@@ -377,9 +363,9 @@ int fpEvalRTN(RuleTreeNode* rtn, Packet* p, int check_ports)
     if ( !rtn )
         return 0;
 
-    // FIXIT: maybe add a port test here ...
+    // FIXIT-L maybe add a port test here ...
 
-    DebugFormat(DEBUG_DETECT, "[*] Rule Head %p\n", rtn);
+    DebugFormat(DEBUG_DETECT, "[*] Rule Head %p\n", (void*) rtn);
 
     if (!rtn->rule_func->RuleHeadFunc(p, rtn, rtn->rule_func, check_ports))
     {
@@ -392,7 +378,7 @@ int fpEvalRTN(RuleTreeNode* rtn, Packet* p, int check_ports)
 
     DebugMessage(DEBUG_DETECT,
         "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
-    DebugFormat(DEBUG_DETECT, "   => RTN %p Matched!\n", rtn);
+    DebugFormat(DEBUG_DETECT, "   => RTN %p Matched!\n", (void*) rtn);
     DebugMessage(DEBUG_DETECT,
         "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n");
     /*
@@ -473,13 +459,13 @@ static int rule_tree_match(
         {
             //  We have a qualified event from this tree
             pomd->pg->event_count++;
-            perf_event->UpdateQEvents();
+            pmqs.qualified_events++;
         }
         else
         {
             // This means that the event is non-qualified.
             pomd->pg->match_count++;
-            perf_event->UpdateNQEvents();
+            pmqs.non_qualified_events++;
         }
     }
 
@@ -1047,8 +1033,6 @@ static inline int fpEvalHeaderSW(PortGroup* port_group, Packet* p,
 
     if ( do_detect_content )
     {
-        // FIXIT-L sdf etc. ran here
-
         if ( fp->get_stream_insert() || !(p->packet_flags & PKT_STREAM_INSERT) )
             if ( fp_search(port_group, p, check_ports, type, omd) )
                 return 0;
@@ -1056,10 +1040,10 @@ static inline int fpEvalHeaderSW(PortGroup* port_group, Packet* p,
 
     do
     {
-        // FIXIT-L restrict to non-data packets?  (non-data includes
-        // defrags).  strictly speaking, nfp (no fast pattern) rules are
-        // not the same as nc (no content).  since these rules may have
-        // content, they must be run against all packets.
+        // FIXIT-L restrict no-fast-pattern to non-data packets?  (non-data includes
+        // defrags).  strictly speaking, nfp (no fast pattern) rules are not the same
+        // as nc (no content).  since these rules may have content, they must be run
+        // against all packets.
         //if ( p->is_data() )
         //    break;
 
@@ -1089,13 +1073,13 @@ static inline int fpEvalHeaderSW(PortGroup* port_group, Packet* p,
             {
                 // We have a qualified event from this tree
                 port_group->event_count++;
-                perf_event->UpdateQEvents();
+                pmqs.qualified_events++;
             }
             else
             {
                 // This means that the event is non-qualified.
                 port_group->match_count++;
-                perf_event->UpdateNQEvents();
+                pmqs.non_qualified_events++;
             }
             pc.slow_searches++;
         }
@@ -1165,8 +1149,8 @@ static inline void fpEvalHeaderTcp(Packet* p, OTNX_MATCH_DATA* omd)
         return;
 
     DebugFormat(DEBUG_ATTRIBUTE,
-        "fpEvalHeaderTcp: sport=%d, dport=%d, src:%x, dst:%x, any:%x\n",
-        p->ptrs.sp,p->ptrs.dp,src,dst,any);
+        "fpEvalHeaderTcp: sport=%d, dport=%d, src:%p, dst:%p, any:%p\n",
+        p->ptrs.sp,p->ptrs.dp,(void*)src,(void*)dst,(void*)any);
 
     if ( dst )
         fpEvalHeaderSW(dst, p, 1, 0, 0, omd);
@@ -1186,8 +1170,8 @@ static inline void fpEvalHeaderUdp(Packet* p, OTNX_MATCH_DATA* omd)
         return;
 
     DebugFormat(DEBUG_ATTRIBUTE,
-        "fpEvalHeaderUdp: sport=%d, dport=%d, src:%x, dst:%x, any:%x\n",
-        p->ptrs.sp,p->ptrs.dp,src,dst,any);
+        "fpEvalHeaderUdp: sport=%d, dport=%d, src:%p, dst:%p, any:%p\n",
+        p->ptrs.sp,p->ptrs.dp,(void*)src,(void*)dst,(void*)any);
 
     if ( dst )
         fpEvalHeaderSW(dst, p, 1, 0, 0, omd) ;
@@ -1209,7 +1193,7 @@ static inline bool fpEvalHeaderSvc(Packet* p, OTNX_MATCH_DATA* omd, int proto)
 
     if (proto_ordinal > 0)
     {
-        if (p->packet_flags & PKT_FROM_SERVER) /* to cli */
+        if (p->is_from_server()) /* to cli */
         {
             DebugMessage(DEBUG_ATTRIBUTE, "pkt_from_server\n");
 
@@ -1217,7 +1201,7 @@ static inline bool fpEvalHeaderSvc(Packet* p, OTNX_MATCH_DATA* omd, int proto)
             file = snort_conf->sopgTable->get_port_group(proto, false, SNORT_PROTO_FILE);
         }
 
-        if (p->packet_flags & PKT_FROM_CLIENT) /* to srv */
+        if (p->is_from_client()) /* to srv */
         {
             DebugMessage(DEBUG_ATTRIBUTE, "pkt_from_client\n");
 
@@ -1227,8 +1211,8 @@ static inline bool fpEvalHeaderSvc(Packet* p, OTNX_MATCH_DATA* omd, int proto)
 
         DebugFormat(DEBUG_ATTRIBUTE,
             "fpEvalHeaderSvc:targetbased-ordinal-lookup: "
-            "sport=%d, dport=%d, proto_ordinal=%d, proto=%d, src:%x, "
-            "file:%x\n",p->ptrs.sp,p->ptrs.dp,proto_ordinal,proto,svc,file);
+            "sport=%d, dport=%d, proto_ordinal=%d, proto=%d, src:%p, "
+            "file:%p\n",p->ptrs.sp,p->ptrs.dp,proto_ordinal,proto,(void*)svc,(void*)file);
     }
     // FIXIT-P put alert service rules with file data fp in alert file group and
     // verfiy ports and service during rule eval to avoid searching file data 2x.

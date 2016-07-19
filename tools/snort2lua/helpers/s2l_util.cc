@@ -51,22 +51,44 @@ std::vector<std::string>& split(const std::string& s,
 
 const ConvertMap* find_map(
     const std::vector<const ConvertMap*>& map,
-    const std::string& keyword)
+    const std::string& keyword,
+    bool strict_case)
 {
     for (const ConvertMap* p : map)
-        if (p->keyword.compare(0, p->keyword.size(), keyword) == 0)
-            return p;
+    {
+        if (strict_case)
+        {
+            if (p->keyword.compare(0, p->keyword.size(), keyword) == 0)
+                return p;
+        }
+        else
+        {
+            if (case_compare(p->keyword, keyword))
+                return p;
+        }
+    }
 
     return nullptr;
 }
 
 const std::unique_ptr<const ConvertMap>& find_map(
     const std::vector<std::unique_ptr<const ConvertMap> >& map,
-    const std::string& keyword)
+    const std::string& keyword,
+    bool strict_case)
 {
     for (auto& p : map)
-        if (p->keyword.compare(0, p->keyword.size(), keyword) == 0)
-            return p;
+    {
+        if (strict_case)
+        {
+            if (p->keyword.compare(0, p->keyword.size(), keyword) == 0)
+                return p;
+        }
+        else
+        {
+            if (case_compare(p->keyword, keyword))
+                return p;
+        }
+    }
 
     static std::unique_ptr<const ConvertMap> np(nullptr);
     return np;
@@ -170,7 +192,7 @@ bool get_string(std::istringstream& stream,
         // find the first non-delimeter charachter
         const std::size_t first_char = option.find_first_not_of(delimeters);
 
-        // if there are no charachters between a delimeter, empty string. return false
+        // if there are no characters between a delimeter, empty string. return false
         if (first_char == std::string::npos)
             return false;
 

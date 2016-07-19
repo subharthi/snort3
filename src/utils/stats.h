@@ -37,7 +37,7 @@
 
 typedef std::vector<unsigned> IndexVec;
 
-// FIXIT-L: split this out into appropriate modules
+// FIXIT-L split this out into appropriate modules
 struct PacketCount
 {
     PegCount total_from_daq;
@@ -75,7 +75,6 @@ struct AuxCount
 {
     PegCount internal_blacklist;
     PegCount internal_whitelist;
-    PegCount total_fail_open;
     PegCount idle;
 };
 
@@ -100,7 +99,6 @@ struct DAQStats
     PegCount internal_blacklist;
     PegCount internal_whitelist;
     PegCount skipped;
-    PegCount fail_open;
     PegCount idle;
 };
 
@@ -115,7 +113,7 @@ extern const PegInfo proc_names[];
 SO_PUBLIC PegCount get_packet_number();
 
 SO_PUBLIC void LogLabel(const char*, FILE* = stdout);
-SO_PUBLIC void LogValue(const char*, const char*);
+SO_PUBLIC void LogValue(const char*, const char*, FILE* = stdout);
 SO_PUBLIC void LogCount(const char*, uint64_t, FILE* = stdout);
 
 SO_PUBLIC void LogStat(const char*, uint64_t n, uint64_t tot, FILE* = stdout);
@@ -136,8 +134,8 @@ void DropStats();
 void pc_sum();
 void pc_accum();
 void PrintStatistics();
-void TimeStart(void);
-void TimeStop(void);
+void TimeStart();
+void TimeStop();
 
 #endif
 

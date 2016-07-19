@@ -24,9 +24,9 @@
 // threads, high-availability partners, and other threads.
 
 #include <vector>
+#include <string>
 
 #include "main/snort_types.h"
-#include "main/snort_config.h"
 #include "framework/base_api.h"
 
 // this is the current version of the api
@@ -81,7 +81,7 @@ protected:
 class ConnectorConfig
 {
 public:
-    typedef std::vector<ConnectorConfig> ConfigSet;
+    typedef std::vector<ConnectorConfig*> ConfigSet;
     Connector::Direction direction;
     std::string connector_name;
     std::string name;
@@ -90,7 +90,7 @@ public:
 class SO_PUBLIC ConnectorCommon
 {
 public:
-    ConnectorConfig::ConfigSet config_set;
+    ConnectorConfig::ConfigSet* config_set;
 };
 
 typedef ConnectorCommon* (* ConnectorNewFunc)(Module*);

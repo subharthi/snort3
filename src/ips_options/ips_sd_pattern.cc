@@ -18,7 +18,7 @@
 
 // ips_sd_pattern.cc author Victor Roemer <viroemer@cisco.com>
 
-// FIXIT-H: Use Hyperscan
+// FIXIT-M use Hyperscan
 
 #include <string.h>
 #include <assert.h>
@@ -35,14 +35,31 @@
 #include "parser/parser.h"
 #include "profiler/profiler.h"
 #include "sd_pattern_match.h"
+#include "log/obfuscator.h"
 
 #define s_name "sd_pattern"
 #define s_help "rule option for detecting sensitive data"
+
+struct SdStats
+{
+    PegCount nomatch_notfound;
+    PegCount nomatch_threshold;
+};
+
+const PegInfo sd_pegs[] =
+{
+    { "below threshold", "sd_pattern matched but missed threshold" },
+    { "pattern not found", "sd_pattern did not not match" },
+    { nullptr, nullptr }
+};
+
+static THREAD_LOCAL SdStats s_stats;
 
 struct SdPatternConfig
 {
     std::string pii;
     unsigned threshold = 1;
+    bool obfuscate_pii;
 };
 
 static THREAD_LOCAL ProfileStats sd_pattern_perf_stats;
@@ -63,23 +80,21 @@ public:
     int eval(Cursor&, Packet* p) override;
 
 private:
-    unsigned SdSearch(const uint8_t* buf, uint16_t buflen);
+    unsigned SdSearch(Cursor&, Packet*);
 
     const SdPatternConfig config;
-    SdOptionData* sd_data;
-    SdContext* sd_context;
+    SdOptionData* opt;
 };
 
 SdPatternOption::SdPatternOption(const SdPatternConfig& c) :
     IpsOption(s_name, RULE_OPTION_TYPE_BUFFER_USE), config(c)
 {
-    sd_data = new SdOptionData(config.pii, config.threshold);
-    sd_context = new SdContext(sd_data);
+    opt = new SdOptionData(config.pii, config.obfuscate_pii);
 }
 
 SdPatternOption::~SdPatternOption()
 {
-    delete(sd_context);
+    delete opt;
 }
 
 uint32_t SdPatternOption::hash() const
@@ -105,22 +120,29 @@ bool SdPatternOption::operator==(const IpsOption& ips) const
     return false;
 }
 
-unsigned SdPatternOption::SdSearch(const uint8_t* buf, uint16_t buflen)
+unsigned SdPatternOption::SdSearch(Cursor& c, Packet* p)
 {
+    const uint8_t* const start = c.buffer();
+    const uint8_t* buf = c.start();
+    uint16_t buflen = c.length();
+    const uint8_t* const end = buf + buflen;
+
     unsigned count = 0;
-    const uint8_t* end = buf + buflen;
-
-    SdSessionData ssn;
-    memset(&ssn, 0, sizeof(ssn));
-
     while (buf < end && count < config.threshold)
     {
-        SdTreeNode* matched_node;
         uint16_t match_len = 0;
 
-        matched_node = FindPii(sd_context->head_node, buf, &match_len, buflen, &ssn);
-        if ( matched_node )
+        if ( opt->match(buf, &match_len, buflen) )
         {
+            if ( opt->obfuscate_pii )
+            {
+                if ( !p->obfuscator )
+                    p->obfuscator = new Obfuscator();
+
+                uint32_t off = buf - start;
+                p->obfuscator->push(off, match_len - 4);
+            }
+
             buf += match_len;
             buflen -= match_len;
             count++;
@@ -135,13 +157,18 @@ unsigned SdPatternOption::SdSearch(const uint8_t* buf, uint16_t buflen)
     return count;
 }
 
-int SdPatternOption::eval(Cursor& c, Packet*)
+int SdPatternOption::eval(Cursor& c, Packet* p)
 {
     Profile profile(sd_pattern_perf_stats);
 
-    unsigned matches = SdSearch(c.start(), c.length());
+    unsigned matches = SdSearch(c, p);
+
     if ( matches >= config.threshold )
         return DETECTION_OPTION_MATCH;
+    else if ( matches == 0 )
+        ++s_stats.nomatch_notfound;
+    else if ( matches > 0 && matches < config.threshold )
+        ++s_stats.nomatch_threshold;
 
     return DETECTION_OPTION_NO_MATCH;
 }
@@ -169,13 +196,17 @@ public:
     bool begin(const char*, int, SnortConfig*) override;
     bool set(const char*, Value& v, SnortConfig*) override;
 
+    const PegInfo* get_pegs() const override
+    { return sd_pegs; }
+
+    PegCount* get_counts() const override
+    { return (PegCount*)&s_stats; }
+
     ProfileStats* get_profile() const override
     { return &sd_pattern_perf_stats; }
 
     void get_data(SdPatternConfig& c)
-    {
-        c = config;
-    }
+    { c = config; }
 
 private:
     SdPatternConfig config;
@@ -187,8 +218,9 @@ bool SdPatternModule::begin(const char*, int, SnortConfig*)
     return true;
 }
 
-bool SdPatternModule::set(const char*, Value& v, SnortConfig*)
+bool SdPatternModule::set(const char*, Value& v, SnortConfig* sc)
 {
+    config.obfuscate_pii = sc->obfuscate_pii;
     if ( v.is("~pattern") )
     {
         config.pii = v.get_string();

@@ -39,7 +39,6 @@ extern "C" {
 
 #include "main/snort_debug.h"
 #include "main/snort_config.h"
-#include "main/analyzer.h"
 #include "framework/logger.h"
 #include "framework/module.h"
 #include "protocols/packet.h"
@@ -197,7 +196,7 @@ static void TcpdumpInitLogFile(LtdConfig*, bool no_timestamp)
 
     get_instance_file(file, filename.c_str());
 
-    int dlt = DAQ_GetBaseProtocol();
+    int dlt = SFDAQ::get_base_protocol();
 
     // convert these flavors of raw to the generic
     // for compatibility with libpcap 1.0.0
@@ -205,7 +204,7 @@ static void TcpdumpInitLogFile(LtdConfig*, bool no_timestamp)
         dlt = DLT_RAW;
 
     pcap_t* pcap;
-    pcap = pcap_open_dead(dlt, DAQ_GetSnapLen());
+    pcap = pcap_open_dead(dlt, SFDAQ::get_snap_len());
 
     if ( !pcap )
         FatalError("%s: can't get pcap context\n", S_NAME);
@@ -219,7 +218,7 @@ static void TcpdumpInitLogFile(LtdConfig*, bool no_timestamp)
     }
     pcap_close(pcap);
 
-    context.file = SnortStrdup(file.c_str());
+    context.file = snort_strdup(file.c_str());
     context.size = PCAP_FILE_HDR_SZ;
 }
 
@@ -239,7 +238,7 @@ static void TcpdumpRollLogFile(LtdConfig* data)
         pcap_dump_close(context.dumpd);
         context.dumpd = NULL;
         context.size = 0;
-        free(context.file);
+        snort_free(context.file);
         context.file = nullptr;
     }
 
@@ -261,7 +260,7 @@ static void SpoLogTcpdumpCleanup(LtdConfig*)
             ErrorMessage("Could not remove tcpdump output file %s: %s\n",
                 context.file, get_error(errno));
 
-        free(context.file);
+        snort_free(context.file);
         context.file = nullptr;
     }
 }
@@ -312,7 +311,7 @@ void PcapLogger::close()
         context.dumpd = nullptr;
     }
     if ( context.file )
-        free(context.file);
+        snort_free(context.file);
 }
 
 void PcapLogger::log(Packet* p, const char* msg, Event* event)

@@ -31,7 +31,9 @@ extern const BaseApi* nin_port_scan;
 extern const BaseApi* nin_reputation;
 
 #ifdef STATIC_INSPECTORS
+extern const BaseApi* nin_appid;
 extern const BaseApi* nin_arp_spoof;
+extern const BaseApi* nin_packet_capture;
 #endif
 
 const BaseApi* network_inspectors[] =
@@ -44,7 +46,9 @@ const BaseApi* network_inspectors[] =
     nin_reputation,
 
 #ifdef STATIC_INSPECTORS
+    nin_appid,
     nin_arp_spoof,
+    nin_packet_capture,
 #endif
     nullptr
 };

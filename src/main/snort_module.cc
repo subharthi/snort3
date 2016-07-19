@@ -41,6 +41,7 @@ using namespace std;
 #include "framework/parameter.h"
 #include "managers/module_manager.h"
 #include "managers/plugin_manager.h"
+#include "packet_io/sfdaq_config.h"
 #include "parser/config_file.h"
 #include "parser/parser.h"
 #include "parser/parse_utils.h"
@@ -56,7 +57,7 @@ using namespace std;
 // commands
 //-------------------------------------------------------------------------
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
 static const Parameter s_reload[] =
 {
     { "filename", Parameter::PT_STRING, nullptr, nullptr,
@@ -131,7 +132,7 @@ static const Parameter s_params[] =
     { "-?", Parameter::PT_STRING, "(optional)", nullptr,
       "<option prefix> output matching command line option quick help (same as --help-options)" },
 
-    // FIXIT should use PluginManager::get_available_plugins(PT_LOGGER)
+    // FIXIT-M should use PluginManager::get_available_plugins(PT_LOGGER)
     // but plugins not yet loaded upon set
     { "-A", Parameter::PT_STRING, nullptr, nullptr,
       "<mode> set alert mode: none, cmg, or alert_*" },
@@ -169,7 +170,7 @@ static const Parameter s_params[] =
     { "-i", Parameter::PT_STRING, nullptr, nullptr,
       "<iface>... list of interfaces" },
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     { "-j", Parameter::PT_PORT, nullptr, nullptr,
       "<port> to listen for telnet connections" },
 #endif
@@ -274,9 +275,6 @@ static const Parameter s_params[] =
     { "--daq-list", Parameter::PT_IMPLIED, nullptr, nullptr,
       "list packet acquisition modules available in optional dir, default is static modules only" },
 
-    { "--daq-mode", Parameter::PT_STRING, nullptr, nullptr,
-      "<mode> select the DAQ operating mode" },
-
     { "--daq-var", Parameter::PT_STRING, nullptr, nullptr,
       "<name=value> specify extra DAQ configuration variable" },
 
@@ -293,7 +291,7 @@ static const Parameter s_params[] =
     { "--dump-defaults", Parameter::PT_STRING, "(optional)", nullptr,
       "[<module prefix>] output module defaults in Lua format" },
 
-    { "--dump-version", Parameter::PT_STRING, "(optional)", nullptr,
+    { "--dump-version", Parameter::PT_IMPLIED, nullptr, nullptr,
       "output the version, the whole version, and only the version" },
 
     { "--enable-inline-test", Parameter::PT_IMPLIED, nullptr, nullptr,
@@ -416,7 +414,7 @@ static const Parameter s_params[] =
     { "--script-path", Parameter::PT_STRING, nullptr, nullptr,
       "<path> to a luajit script or directory containing luajit scripts" },
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     { "--shell", Parameter::PT_IMPLIED, nullptr, nullptr,
       "enable the interactive command line", },
 #endif
@@ -496,7 +494,7 @@ static const Parameter s_params[] =
 
 #define s_name "snort"
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
 #define s_help \
     "command line configuration and shell commands"
 #else
@@ -510,16 +508,26 @@ public:
     SnortModule() : Module(s_name, s_help, s_params)
     { }
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     const Command* get_commands() const override
     { return snort_cmds; }
 #endif
 
+    bool begin(const char*, int, SnortConfig*) override;
     bool set(const char*, Value&, SnortConfig*) override;
     const PegInfo* get_pegs() const override { return proc_names; }
     PegCount* get_counts() const override { return (PegCount*) &proc_stats; }
     bool global_stats() const override { return true; }
+private:
+    int instance_id;
 };
+
+bool SnortModule::begin(const char* fqn, int, SnortConfig*)
+{
+    if (!strcmp(fqn, "snort"))
+        instance_id = -1;
+    return true;
+}
 
 bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
 {
@@ -560,9 +568,15 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         sc->run_flags |= RUN_FLAG__STATIC_HASH;
 
     else if ( v.is("-i") )
-        Trough::add_source(Trough::SOURCE_LIST, v.get_string());
+    {
+        instance_id++;
+        if (instance_id > 0)
+            sc->daq_config->set_input_spec(v.get_string(), instance_id);
+        else
+            sc->daq_config->set_input_spec(v.get_string());
+    }
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     else if ( v.is("-j") )
         sc->remote_control = v.get_long();
 #endif
@@ -609,7 +623,7 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         config_set_var(sc, v.get_string());
 
     else if ( v.is("-s") )
-        sc->pkt_snaplen = v.get_long();
+        sc->daq_config->set_mru_size(v.get_long());
 
     else if ( v.is("-T") )
         sc->run_flags |= RUN_FLAG__TEST;
@@ -624,13 +638,13 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         ConfigSetUid(sc, v.get_string());
 
     else if ( v.is("-V") )
-        help_version(sc, v.get_string());
+        help_version(sc);
 
     else if ( v.is("-v") )
         ConfigVerbose(sc, v.get_string());
 
     else if ( v.is("-W") )
-        list_interfaces(sc, v.get_string());
+        list_interfaces(sc);
 
 #if defined(DLT_IEEE802_11)
     else if ( v.is("-w") )
@@ -662,19 +676,21 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         ConfigCreatePidFile(sc, v.get_string());
 
     else if ( v.is("--daq") )
-        ConfigDaqType(sc, v.get_string());
+        sc->daq_config->set_module_name(v.get_string());
 
     else if ( v.is("--daq-dir") )
-        ConfigDaqDir(sc, v.get_string());
+        sc->daq_config->add_module_dir(v.get_string());
 
     else if ( v.is("--daq-list") )
-        list_daqs(sc, v.get_string());
-
-    else if ( v.is("--daq-mode") )
-        ConfigDaqMode(sc, v.get_string());
+        list_daqs(sc);
 
     else if ( v.is("--daq-var") )
-        ConfigDaqVar(sc, v.get_string());
+    {
+        if (instance_id < 0)
+            sc->daq_config->set_variable(v.get_string());
+        else
+            sc->daq_config->set_variable(v.get_string(), instance_id);
+    }
 
     else if ( v.is("--dirty-pig") )
         ConfigDirtyPig(sc, v.get_string());
@@ -689,7 +705,7 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         dump_defaults(sc, v.get_string());
 
     else if ( v.is("--dump-version") )
-        dump_version(sc, v.get_string());
+        dump_version(sc);
 
     else if ( v.is("--enable-inline-test") )
         sc->run_flags |= RUN_FLAG__INLINE_TEST;
@@ -803,7 +819,7 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
     else if ( v.is("--script-path") )
         ConfigScriptPaths(sc, v.get_string());
 
-#ifdef BUILD_SHELL
+#ifdef SHELL
     else if ( v.is("--shell") )
         sc->run_flags |= RUN_FLAG__SHELL;
 #endif
@@ -820,7 +836,7 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         sc->pkt_skip = v.get_long();
 
     else if ( v.is("--snaplen") )
-        sc->pkt_snaplen = v.get_long();
+        sc->daq_config->set_mru_size(v.get_long());
 
     else if ( v.is("--stdin-rules") )
         sc->stdin_rules = true;
@@ -836,7 +852,7 @@ bool SnortModule::set(const char*, Value& v, SnortConfig* sc)
         catch_set_filter(v.get_string());
 #endif
     else if ( v.is("--version") )
-        help_version(sc, v.get_string());
+        help_version(sc);
 
     else if ( v.is("--warn-all") )
         sc->warning_flags = 0xFFFFFFFF;

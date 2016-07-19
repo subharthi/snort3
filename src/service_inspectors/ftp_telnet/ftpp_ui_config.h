@@ -38,12 +38,10 @@
 #ifndef FTPP_UI_CONFIG_H
 #define FTPP_UI_CONFIG_H
 
-#include "ftpp_include.h"
 #include "framework/bits.h"
 #include "sfip/sfip_t.h"
 #include "sfrt/sfrt.h"
 #include "utils/kmap.h"
-#include "utils/snort_bounds.h"
 
 /*
  * Defines
@@ -220,8 +218,8 @@ struct FTP_CLIENT_PROTO_CONF
     bool telnet_cmds;
     bool ignore_telnet_erase_cmds;
 
-    /* allow_bounce to IP/mask port|port-range
-       FIXIT: change this to use a quick find of IP/mask */
+    // allow_bounce to IP/mask port|port-range
+    // FIXIT-P change this to use a quick find of IP/mask
     BOUNCE_LOOKUP* bounce_lookup;
 
     FTP_CLIENT_PROTO_CONF();

@@ -28,7 +28,6 @@
 #include "actions/actions.h"
 #include "utils/stats.h"
 
-THREAD_LOCAL DataPointer g_alt_data;
 THREAD_LOCAL DataPointer g_file_data;
 
 #define LOG_CHARS 16
@@ -99,7 +98,7 @@ void EventTrace_Log(const Packet* p, const OptTreeNode* otn, int action)
     nEvents++;
 }
 
-void EventTrace_Init(void)
+void EventTrace_Init()
 {
     if ( snort_conf->event_trace_max > 0 )
     {
@@ -113,7 +112,7 @@ void EventTrace_Init(void)
     }
 }
 
-void EventTrace_Term(void)
+void EventTrace_Term()
 {
     if ( tlog )
     {

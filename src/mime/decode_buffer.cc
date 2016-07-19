@@ -20,7 +20,6 @@
 
 #include "decode_buffer.h"
 
-#include "utils/snort_bounds.h"
 #include "utils/util.h"
 
 
@@ -109,16 +108,16 @@ DecodeBuffer::DecodeBuffer(int max_depth)
     if (max_depth < 0)
         return;
 
-    encodeBuf = (uint8_t*)SnortAlloc(buf_size);
-    decodeBuf = (uint8_t*)SnortAlloc(buf_size);
+    encodeBuf = (uint8_t*)snort_calloc(buf_size);
+    decodeBuf = (uint8_t*)snort_calloc(buf_size);
 }
 
 DecodeBuffer::~DecodeBuffer()
 {
     if (encodeBuf)
-        free(encodeBuf);
+        snort_free(encodeBuf);
     if (decodeBuf)
-        free(decodeBuf);
+        snort_free(decodeBuf);
 }
 
 void DecodeBuffer::update_buffer(uint32_t act_encode_size, uint32_t act_decode_size)

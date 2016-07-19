@@ -742,8 +742,10 @@ static const IpsApi version_api =
 //-------------------------------------------------------------------------
 
 // FIXIT-M add match_unknown option to look at HEAD__UNKNOWN.
-// FIXIT-M if http_header is the fast pattern buffer and the content to be matched appears in the
-// normalized field but not in the raw field detection will fail.
+
+// FIXIT-M if http_header is the fast pattern buffer and the content to be
+// matched appears in the normalized field but not in the raw field
+// detection will fail.
 
 static const Parameter http_header_params[] =
 {
@@ -1001,6 +1003,23 @@ static const IpsApi raw_status_api =
 // plugins
 //-------------------------------------------------------------------------
 
+#ifdef BUILDING_SO
+const BaseApi* ips_uri = &uri_api.base;
+const BaseApi* ips_client_body = &client_body_api.base;
+const BaseApi* ips_method = &method_api.base;
+const BaseApi* ips_cookie = &cookie_api.base;
+const BaseApi* ips_stat_code = &stat_code_api.base;
+const BaseApi* ips_stat_msg = &stat_msg_api.base;
+const BaseApi* ips_raw_uri = &raw_uri_api.base;
+const BaseApi* ips_raw_header = &raw_header_api.base;
+const BaseApi* ips_raw_cookie = &raw_cookie_api.base;
+const BaseApi* ips_version = &version_api.base;
+const BaseApi* ips_header = &header_api.base;
+const BaseApi* ips_trailer = &trailer_api.base;
+const BaseApi* ips_raw_trailer = &raw_trailer_api.base;
+const BaseApi* ips_raw_request = &raw_request_api.base;
+const BaseApi* ips_raw_status = &raw_status_api.base;
+#else
 SO_PUBLIC const BaseApi* snort_plugins[] =
 {
     &uri_api.base,
@@ -1020,4 +1039,5 @@ SO_PUBLIC const BaseApi* snort_plugins[] =
     &raw_status_api.base,
     nullptr
 };
+#endif
 

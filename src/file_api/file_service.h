@@ -28,19 +28,19 @@
 #include "main/snort_types.h"
 #include "file_policy.h"
 
-class FileBlock;
+class FileEnforcer;
 
 class SO_PUBLIC FileService
 {
 public:
     // This must be called when snort restarts
-    static void init(void);
+    static void init();
 
     // Called after permission is dropped
-    static void post_init(void);
+    static void post_init();
 
     // This must be called when snort exits
-    static void close(void);
+    static void close();
 
     static void enable_file_type();
     static void enable_file_signature ();
@@ -52,15 +52,17 @@ public:
     static int64_t get_max_file_depth();
 
     static FilePolicy& get_inspect();
-    static FileBlock* get_file_block() {return file_block;}
+    static FileEnforcer* get_file_enforcer() {return file_enforcer;}
 
 private:
-    static void start_file_processing(void);
+    static void start_file_processing();
     static bool file_type_id_enabled;
     static bool file_signature_enabled;
     static bool file_capture_enabled;
     static bool file_processing_initiated;
-    static FileBlock* file_block;
+    static FileEnforcer* file_enforcer;
 };
+
+extern const struct BaseApi* file_inspectors[];
 #endif
 

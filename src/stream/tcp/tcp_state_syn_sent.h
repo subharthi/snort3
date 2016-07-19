@@ -29,8 +29,8 @@ class TcpSession;
 class TcpStateSynSent : public TcpStateHandler
 {
 public:
-    TcpStateSynSent(TcpStateMachine&, TcpSession&);
-    virtual ~TcpStateSynSent(void);
+    TcpStateSynSent(TcpStateMachine&);
+    virtual ~TcpStateSynSent();
 
     bool syn_sent(TcpSegmentDescriptor&, TcpStreamTracker&) override;
     bool syn_recv(TcpSegmentDescriptor&, TcpStreamTracker&) override;

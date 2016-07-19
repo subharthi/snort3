@@ -53,13 +53,13 @@ int totalNumEntries = 0;
 ReputationConfig::~ReputationConfig()
 {
     if (reputation_segment != nullptr)
-        free(reputation_segment);
+        snort_free(reputation_segment);
 
     if (blacklist_path)
-        free(blacklist_path);
+        snort_free(blacklist_path);
 
     if (whitelist_path)
-        free(whitelist_path);
+        snort_free(whitelist_path);
 }
 
 
@@ -99,10 +99,7 @@ void IpListInit(uint32_t maxEntries, ReputationConfig* config)
     {
         uint32_t mem_size;
         mem_size = estimateSizeFromEntries(maxEntries, config->memcap);
-        config->reputation_segment = (uint8_t*)malloc(mem_size);
-
-        if ( !config->reputation_segment )
-            FatalError("Failed to allocate memory for local segment\n");
+        config->reputation_segment = (uint8_t*)snort_alloc(mem_size);
 
         segment_meminit(config->reputation_segment, mem_size);
         base = config->reputation_segment;
@@ -116,7 +113,7 @@ void IpListInit(uint32_t maxEntries, ReputationConfig* config)
         if ( !config->iplist )
             FatalError("Failed to create IP list.\n");
 
-        list_ptr = segment_calloc((size_t)DECISION_MAX, sizeof(ListInfo));
+        list_ptr = segment_snort_calloc((size_t)DECISION_MAX, sizeof(ListInfo));
 
         if ( !list_ptr )
             FatalError("Failed to create IP list.\n");
@@ -184,7 +181,7 @@ static inline int duplicateInfo(IPrepInfo* destInfo,IPrepInfo* currentInfo,
         *destInfo = *currentInfo;
         if (!currentInfo->next)
             break;
-        nextInfo = segment_calloc(1,sizeof(IPrepInfo));
+        nextInfo = segment_snort_calloc(1,sizeof(IPrepInfo));
         if (!nextInfo)
         {
             destInfo->next = 0;
@@ -215,7 +212,7 @@ static int64_t updateEntryInfo(INFO* current, INFO new_entry, SaveDest saveDest,
     if (!(*current))
     {
         /* Copy the data to segment memory*/
-        *current = segment_calloc(1,sizeof(IPrepInfo));
+        *current = segment_snort_calloc(1,sizeof(IPrepInfo));
         if (!(*current))
         {
             return -1;
@@ -293,7 +290,7 @@ static int64_t updateEntryInfo(INFO* current, INFO new_entry, SaveDest saveDest,
     else
     {
         IPrepInfo* nextInfo;
-        MEM_OFFSET ipInfo_ptr = segment_calloc(1,sizeof(IPrepInfo));
+        MEM_OFFSET ipInfo_ptr = segment_snort_calloc(1,sizeof(IPrepInfo));
         if (!ipInfo_ptr)
             return -1;
         destInfo->next = ipInfo_ptr;
@@ -351,15 +348,15 @@ static int AddIPtoList(sfip_t* ipAddr,INFO ipInfo_ptr, ReputationConfig* config)
 
     iRet = sfrt_flat_insert((void*)ipAddr, (unsigned char)ipAddr->bits, ipInfo_ptr, RT_FAVOR_ALL,
         config->iplist, &updateEntryInfo);
-    DEBUG_WRAP(DebugFormat(DEBUG_REPUTATION, "Unused memory: %d \n",segment_unusedmem()); );
+    DEBUG_WRAP(DebugFormat(DEBUG_REPUTATION, "Unused memory: %zu \n",segment_unusedmem()); );
 
     if (RT_SUCCESS == iRet)
     {
 #ifdef DEBUG_MSGS
         IPrepInfo* result;
-        DebugFormat(DEBUG_REPUTATION, "Number of entries input: %d, in table: %d \n",
+        DebugFormat(DEBUG_REPUTATION, "Number of entries input: %d, in table: %u \n",
             totalNumEntries,sfrt_flat_num_entries(config->iplist) );
-        DebugFormat(DEBUG_REPUTATION, "Memory allocated: %d \n",sfrt_flat_usage(config->iplist) );
+        DebugFormat(DEBUG_REPUTATION, "Memory allocated: %u \n",sfrt_flat_usage(config->iplist) );
         result = (IPrepInfo*)sfrt_flat_lookup((void*)ipAddr, config->iplist);
         if (nullptr != result)
         {
@@ -426,16 +423,11 @@ static int snort_pton(char const* src, sfip_t* dest)
 {
     char ipbuf[INET6_ADDRSTRLEN];
     char cidrbuf[sizeof("128")];
-    char* out;
-    enum
-    {
-        BEGIN, IP, CIDR1, CIDR2, END, INVALID
-    } state;
+    char* out = ipbuf;
+    enum { BEGIN, IP, CIDR1, CIDR2, END, INVALID } state = BEGIN;
 
     memset(ipbuf, '\0', sizeof(ipbuf));
     memset(cidrbuf, '\0', sizeof(cidrbuf));
-
-    state = BEGIN;
 
     while ( *src )
     {
@@ -451,7 +443,6 @@ static int snort_pton(char const* src, sfip_t* dest)
             if ( isident((int)ch) )
             {
                 // Set the first ipbuff byte and change state
-                out = ipbuf;
                 *out++ = ch;
                 state = IP;
             }
@@ -680,7 +671,7 @@ void LoadListFile(char* filename, INFO info, ReputationConfig* config)
         return;
 
     /*convert list info to ip entry info*/
-    ipInfo_ptr = segment_calloc(1,sizeof(IPrepInfo));
+    ipInfo_ptr = segment_snort_calloc(1,sizeof(IPrepInfo));
     if (!(ipInfo_ptr))
     {
         return;

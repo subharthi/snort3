@@ -48,7 +48,7 @@ FileSession::~FileSession() { }
 
 bool FileSession::setup(Packet*)
 {
-    // FIXIT file context is null here
+    // FIXIT-H file context is null here
     //const char* s = DAQ_GetInterfaceSpec();
     //file_api->set_file_name(p->flow, (uint8_t*)s, strlen(s));
     return true;
@@ -79,8 +79,13 @@ int FileSession::process(Packet* p)
 
     FileFlows* file_flows = FileFlows::get_file_flows(p->flow);
 
-    if (file_flows)
-        file_flows->file_process((uint8_t*)p->data, p->dsize, position(p), c->upload);
+    if (file_flows &&
+        file_flows->file_process((uint8_t*)p->data, p->dsize, position(p), c->upload))
+    {
+        const char* file_name = SFDAQ::get_interface_spec();
+        if (file_name)
+            file_flows->set_file_name((uint8_t*)file_name, strlen(file_name));
+    }
     set_file_data((uint8_t*)p->data, p->dsize);
 
     return 0;

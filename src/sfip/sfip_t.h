@@ -55,6 +55,12 @@ struct sfip_t
 /*      uint64_t    ip64[2]; */
     };
 
+    inline void clear()
+    {
+        family = bits = 0;
+        ip32[0] = ip32[1] = ip32[2] = ip32[3] = 0;
+    }
+
     inline bool is_ip6() const
     { return family == AF_INET6; }
 
@@ -70,7 +76,7 @@ struct sfip_t
 #ifdef inet_ntoa
 #undef inet_ntoa
 #endif
-
+// FIXIT-H replace all inet_ntoa() with sfip_to_str() and delete redef
 SO_PUBLIC char* sfip_to_str(const sfip_t*);
 #define sfip_ntoa(x) sfip_to_str(x)
 #define inet_ntoa sfip_ntoa

@@ -9,10 +9,11 @@ set(EXTERNAL_LIBRARIES
     ${HWLOC_LIBRARIES}
     ${LIBLZMA_LIBRARIES}
     ${LUAJIT_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
-#    ${OPENSSL_CRYPTO_LIBRARY}  -- part of OPENSSL_LIBRARIES
+    ${OPENSSL_CRYPTO_LIBRARY}
     ${PCAP_LIBRARIES}
     ${PCRE_LIBRARIES}
+    ${SAFEC_LIBRARIES}
+    ${SFBPF_LIBRARIES}
     ${ZLIB_LIBRARIES}
 )
 
@@ -23,6 +24,8 @@ set(EXTERNAL_INCLUDES
     ${OPENSSL_INCLUDE_DIR}
     ${PCAP_INCLUDE_DIR}
     ${PCRE_INCLUDE_DIR}
+    ${SAFEC_INCLUDE_DIR}
+    ${SFBPF_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
 )
 
@@ -43,6 +46,7 @@ include_directories(BEFORE network_inspectors)
 # STATIC_INSECTOR_LIBS in service_inspectors/CMakeLists.txt
 if (STATIC_INSPECTORS)
     set (STATIC_INSPECTOR_LIBRARIES
+        appid
         arp_spoof
         back_orifice
         dns
@@ -63,16 +67,17 @@ if (STATIC_CODECS)
     )
 endif()
 
-if (BUILD_UNIT_TESTS)
+if (ENABLE_UNIT_TESTS)
+    enable_testing()
     set( UNIT_TESTS_LIBRARIES catch_tests)
     add_subdirectory(catch)
-endif (BUILD_UNIT_TESTS)
+endif (ENABLE_UNIT_TESTS)
 
-if (BUILD_PIGLET)
-    set(PIGLET_LIBRARIES piglet piglet_plugins)
-    add_subdirectory(piglet)
-    add_subdirectory(piglet_plugins)
-endif (BUILD_PIGLET)
+if ( ENABLE_PIGLET )
+    set ( PIGLET_LIBRARIES piglet piglet_plugins )
+    add_subdirectory ( piglet )
+    add_subdirectory ( piglet_plugins )
+endif ( ENABLE_PIGLET )
 
 #  The main Snort executableRA
 add_executable( snort
@@ -105,7 +110,6 @@ target_link_libraries( snort
     stream_user
     stream_file
     stream_paf
-    file_api
     mime
     http_inspect
     imap
@@ -129,6 +133,7 @@ target_link_libraries( snort
     filter
     detection
     framework
+    file_api
     time
     latency
     profiler

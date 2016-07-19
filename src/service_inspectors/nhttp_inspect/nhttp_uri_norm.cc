@@ -23,6 +23,8 @@
 #include <sstream>
 #include <string>
 
+#include "log/messages.h"
+
 #include "nhttp_enum.h"
 #include "nhttp_uri_norm.h"
 
@@ -119,20 +121,27 @@ int32_t UriNormalizer::norm_char_clean(const Field& input, uint8_t* out_buf,
     const NHttpParaList::UriParam& uri_param, NHttpInfractions& infractions, NHttpEventGen& events)
 {
     bool utf8_needed = false;
+    bool double_decoding_needed = false;
     std::vector<bool> percent_encoded(input.length, false);
     int32_t length = norm_percent_processing(input, out_buf, uri_param, utf8_needed,
-        percent_encoded, infractions, events);
+        percent_encoded, double_decoding_needed, infractions, events);
     if (uri_param.utf8 && utf8_needed)
     {
         length = norm_utf8_processing(Field(length, out_buf), out_buf, uri_param, percent_encoded,
-            infractions, events);
+            double_decoding_needed, infractions, events);
+    }
+    if (uri_param.iis_double_decode && double_decoding_needed)
+    {
+        length = norm_double_decode(Field(length, out_buf), out_buf, uri_param, infractions,
+            events);
     }
     return length;
 }
 
 int32_t UriNormalizer::norm_percent_processing(const Field& input, uint8_t* out_buf,
     const NHttpParaList::UriParam& uri_param, bool& utf8_needed,
-    std::vector<bool>& percent_encoded, NHttpInfractions& infractions, NHttpEventGen& events)
+    std::vector<bool>& percent_encoded, bool& double_decoding_needed,
+    NHttpInfractions& infractions, NHttpEventGen& events)
 {
     int32_t length = 0;
     for (int32_t k = 0; k < input.length; k++)
@@ -150,51 +159,47 @@ int32_t UriNormalizer::norm_percent_processing(const Field& input, uint8_t* out_
             out_buf[length++] = input.start[k];
             break;
         case CHAR_PERCENT:
-            if ((k+2 < input.length) && (as_hex[input.start[k+1]] != -1) &&
-                (as_hex[input.start[k+2]] != -1))
+            if (is_percent_encoding(input, k))
             {
                 // %hh => hex value
-                const uint8_t hex_val = as_hex[input.start[k+1]] * 16 + as_hex[input.start[k+2]];
+                const uint8_t hex_val = extract_percent_encoding(input, k);
                 percent_encoded[length] = true;
                 // Test for possible start of two-byte (110xxxxx) or three-byte (1110xxxx) UTF-8
                 if (((hex_val & 0xE0) == 0xC0) || ((hex_val & 0xF0) == 0xE0))
                     utf8_needed = true;
+                if (hex_val == '%')
+                    double_decoding_needed = true;
                 out_buf[length++] = hex_val;
                 k += 2;
             }
             else if ((k+1 < input.length) && (input.start[k+1] == '%'))
             {
                 // %% => %
+                double_decoding_needed = true;
                 out_buf[length++] = '%';
                 k += 1;
             }
-            else if ( uri_param.percent_u &&
-                     (k+5 < input.length) &&
-                     ((input.start[k+1] == 'u') || (input.start[k+1] == 'U')) &&
-                     (as_hex[input.start[k+2]] != -1) &&
-                     (as_hex[input.start[k+3]] != -1) &&
-                     (as_hex[input.start[k+4]] != -1) &&
-                     (as_hex[input.start[k+5]] != -1) )
+            else if (uri_param.percent_u && is_u_encoding(input, k))
             {
                 // %u encoding, this is nonstandard and likely to be malicious
-                infractions += INF_U_ENCODE;
+                infractions += INF_URI_U_ENCODE;
                 events.create_event(EVENT_U_ENCODE);
                 percent_encoded[length] = true;
-                const uint16_t u_val = (as_hex[input.start[k+2]] << 12) |
-                                       (as_hex[input.start[k+3]] << 8)  |
-                                       (as_hex[input.start[k+4]] << 4)  |
-                                        as_hex[input.start[k+5]];
-                const uint8_t byte_val = reduce_to_eight_bits(u_val, uri_param, infractions, events);
+                const uint8_t byte_val = reduce_to_eight_bits(extract_u_encoding(input, k),
+                    uri_param, infractions, events);
                 if (((byte_val & 0xE0) == 0xC0) || ((byte_val & 0xF0) == 0xE0))
                     utf8_needed = true;
+                if (byte_val == '%')
+                    double_decoding_needed = true;
                 out_buf[length++] = byte_val;
                 k += 5;
             }
             else
             {
                 // don't recognize, pass it through
-                infractions += INF_UNKNOWN_PERCENT;
+                infractions += INF_URI_UNKNOWN_PERCENT;
                 events.create_event(EVENT_UNKNOWN_PERCENT);
+                double_decoding_needed = true;
                 out_buf[length++] = '%';
             }
 
@@ -213,7 +218,7 @@ int32_t UriNormalizer::norm_percent_processing(const Field& input, uint8_t* out_
 
 int32_t UriNormalizer::norm_utf8_processing(const Field& input, uint8_t* out_buf,
     const NHttpParaList::UriParam& uri_param, const std::vector<bool>& percent_encoded,
-    NHttpInfractions& infractions, NHttpEventGen& events)
+    bool& double_decoding_needed, NHttpInfractions& infractions, NHttpEventGen& events)
 {
     int32_t length = 0;
     for (int32_t k=0; k < input.length; k++)
@@ -235,7 +240,11 @@ int32_t UriNormalizer::norm_utf8_processing(const Field& input, uint8_t* out_buf
                 }
                 const uint16_t utf8_val = ((input.start[k] & 0x1F) << 6) +
                                            (input.start[k+1] & 0x3F);
-                out_buf[length++] = reduce_to_eight_bits(utf8_val, uri_param, infractions, events);
+                const uint8_t val8 = reduce_to_eight_bits(utf8_val, uri_param, infractions,
+                    events);
+                if (val8 == '%')
+                    double_decoding_needed = true;
+                out_buf[length++] = val8;
                 k += 1;
             }
             // three-byte UTF-8: 1110xxxx 10xxxxxx 10xxxxxx
@@ -256,7 +265,11 @@ int32_t UriNormalizer::norm_utf8_processing(const Field& input, uint8_t* out_buf
                 const uint16_t utf8_val = ((input.start[k] & 0x0F) << 12) +
                                           ((input.start[k+1] & 0x3F) << 6) +
                                            (input.start[k+2] & 0x3F);
-                out_buf[length++] = reduce_to_eight_bits(utf8_val, uri_param, infractions, events);
+                const uint8_t val8 = reduce_to_eight_bits(utf8_val, uri_param, infractions,
+                    events);
+                if (val8 == '%')
+                    double_decoding_needed = true;
+                out_buf[length++] = val8;
                 k += 2;
             }
             else
@@ -268,9 +281,48 @@ int32_t UriNormalizer::norm_utf8_processing(const Field& input, uint8_t* out_buf
     return length;
 }
 
+int32_t UriNormalizer::norm_double_decode(const Field& input, uint8_t* out_buf,
+    const NHttpParaList::UriParam& uri_param, NHttpInfractions& infractions,
+    NHttpEventGen& events)
+{
+    // Double decoding is limited to %hh and %u encoding cases
+    int32_t length = 0;
+    for (int32_t k = 0; k < input.length; k++)
+    {
+        if (input.start[k] != '%')
+            out_buf[length++] = input.start[k];
+        else
+        {
+            if (is_percent_encoding(input, k))
+            {
+                infractions += INF_URI_DOUBLE_DECODE;
+                events.create_event(EVENT_DOUBLE_DECODE);
+                out_buf[length++] = extract_percent_encoding(input, k);
+                k += 2;
+            }
+            else if (uri_param.percent_u && is_u_encoding(input, k))
+            {
+                infractions += INF_URI_DOUBLE_DECODE;
+                events.create_event(EVENT_DOUBLE_DECODE);
+                infractions += INF_URI_U_ENCODE;
+                events.create_event(EVENT_U_ENCODE);
+                out_buf[length++] = reduce_to_eight_bits(extract_u_encoding(input, k), uri_param,
+                    infractions, events);
+                k += 5;
+            }
+            else
+            {
+                out_buf[length++] = '%';
+            }
+        }
+    }
+    return length;
+}
+
 uint8_t UriNormalizer::reduce_to_eight_bits(uint16_t value,
     const NHttpParaList::UriParam& uri_param, NHttpInfractions& infractions, NHttpEventGen& events)
 {
+    // FIXIT-M are values <= 0xFF subject to the unicode map?
     if (value <= 0xFF)
         return value;
     if (!uri_param.iis_unicode)
@@ -491,5 +543,114 @@ void UriNormalizer::load_default_unicode_map(uint8_t map[65536])
         const uint16_t ucode = strtol(token.c_str(), nullptr, 16);
         map[ucode] = strtol(token.c_str()+5, nullptr, 16);
     }
+}
+
+bool UriNormalizer::advance_to_code_page(FILE* file, int page_to_use)
+{
+    const char* WHITE_SPACE = " \t\n\r";
+    const int MAX_BUFFER = 7;
+
+    // Proceed line-by-line through the file until we find the desired code page number
+    char buffer[MAX_BUFFER];
+    while (fgets(buffer, MAX_BUFFER, file) != nullptr)
+    {
+        // Skip past the end of the line
+        if (buffer[strlen(buffer)-1] != '\n')
+        {
+            int skip_char;
+            while (((skip_char = fgetc(file)) != EOF) && (skip_char != '\n'));
+        }
+
+        // Code page number will always be first token on its line
+        char* unused;
+        const char* token = strtok_r(buffer, WHITE_SPACE, &unused);
+
+        // Skip empty lines, comments, and lines of code points
+        if ((token == nullptr) || (token[0] == '#') || strchr(token, ':'))
+            continue;
+
+        // We now have a code page number
+        char* end;
+        const int latest_page = strtol(token, &end, 10);
+        if (*end != '\0')
+            continue;
+
+        if (latest_page == page_to_use)
+        {
+            // The next line in the file will be the desired code page
+            return true;
+        }
+    }
+    // The requested code page is not in the file
+    return false;
+}
+
+bool UriNormalizer::map_code_points(FILE* file, uint8_t* map)
+{
+    // FIXIT-L file read error in middle of code points not recognized as error
+    uint8_t buffer[8];
+    for (bool first = true; true; first = false)
+    {
+        // Error if list of code points ends before it begins
+        if ((fgets((char*)buffer, 8, file) == nullptr) || (buffer[0] == '\n'))
+            return !first;
+
+        // expect HHHH:HH format
+        if ((strlen((char*)buffer) != 7) ||
+            (as_hex[buffer[0]] == -1)    ||
+            (as_hex[buffer[1]] == -1)    ||
+            (as_hex[buffer[2]] == -1)    ||
+            (as_hex[buffer[3]] == -1)    ||
+            (buffer[4] != ':')           ||
+            (as_hex[buffer[5]] == -1)    ||
+            (as_hex[buffer[6]] == -1))
+        {
+            return false;
+        }
+
+        const uint16_t code_point = (as_hex[buffer[0]] << 12) |
+                                    (as_hex[buffer[1]] << 8)  |
+                                    (as_hex[buffer[2]] << 4)  |
+                                     as_hex[buffer[3]];
+        const uint8_t ascii_map = (as_hex[buffer[5]] << 4) | as_hex[buffer[6]];
+
+        map[code_point] = ascii_map;
+
+        // Skip following space
+        const int next = fgetc(file);
+        if ((next == EOF) || (next == '\n'))
+            return true;
+        if (next != ' ')
+            return false;
+    }
+}
+
+void UriNormalizer::load_unicode_map(uint8_t map[65536], const char* filename, int code_page)
+{
+    memset(map, 0xFF, 65536);
+
+    FILE* file = fopen(filename, "r");
+    if (file == nullptr)
+    {
+        ParseError("Cannot open unicode map file %s", filename);
+        return;
+    }
+
+    // Advance file to the desired code page
+    if (!advance_to_code_page(file, code_page))
+    {
+        ParseError("Did not find code page %d in unicode map file %s", code_page, filename);
+        fclose(file);
+        return;
+    }
+
+    if (!map_code_points(file, map))
+    {
+        ParseError("Error while reading code page %d in unicode map file %s", code_page, filename);
+        fclose(file);
+        return;
+    }
+
+    fclose(file);
 }
 

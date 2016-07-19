@@ -34,7 +34,6 @@
 struct SideChannelConfig
 {
     PortBitSet* ports = nullptr;
-    Connector::Direction direction = Connector::CONN_UNDEFINED;
     SCConnectors connectors;
 };
 
@@ -55,10 +54,6 @@ public:
     PegCount* get_counts() const override;
 
     ProfileStats* get_profile() const override;
-
-#ifdef BUILD_SC_SHELL
-    const Command* get_commands() const override;
-#endif
 
 private:
     SideChannelConfig* config = nullptr;

@@ -29,8 +29,8 @@ class TcpSession;
 class TcpStateNone : public TcpStateHandler
 {
 public:
-    TcpStateNone(TcpStateMachine&, TcpSession&);
-    virtual ~TcpStateNone(void);
+    TcpStateNone(TcpStateMachine&);
+    virtual ~TcpStateNone();
 
     bool syn_sent(TcpSegmentDescriptor&, TcpStreamTracker&) override;
     bool syn_recv(TcpSegmentDescriptor&, TcpStreamTracker&) override;

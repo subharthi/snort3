@@ -44,15 +44,11 @@
  */
 #include "ftpp_si.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-# include <ctype.h>
-
-#include "ftpp_return_codes.h"
-#include "ftpp_ui_config.h"
 #include "ft_main.h"
-#include "stream/stream_api.h"
+#include "ftpp_return_codes.h"
+
+#include "sfip/sf_ip.h"
+#include "utils/util.h"
 
 unsigned FtpFlowData::flow_id = 0;
 unsigned TelnetFlowData::flow_id = 0;
@@ -223,8 +219,8 @@ static int FTPInitConf(
      * session, so we can still assume that the initial packet is the client
      * talking.
      */
-    iServerDip = (p->packet_flags & PKT_FROM_CLIENT);
-    iServerSip = (p->packet_flags & PKT_FROM_SERVER);
+    iServerDip = (p->is_from_client());
+    iServerSip = (p->is_from_server());
 
     /*
      * We default to the no FTP traffic case
@@ -333,7 +329,7 @@ static int FTPInitConf(
 void FTPFreesession(FTP_SESSION* ssn)
 {
     if (ssn->filename)
-        free(ssn->filename);
+        snort_free(ssn->filename);
 }
 
 /* Function: FTPDataDirection
@@ -501,11 +497,11 @@ int SetSiInput(FTPP_SI_INPUT* SiInput, Packet* p)
     {
         SiInput->pdir = FTPP_SI_NO_MODE;
     }
-    else if (p->packet_flags & PKT_FROM_SERVER)
+    else if (p->is_from_server())
     {
         SiInput->pdir = FTPP_SI_SERVER_MODE;
     }
-    else if (p->packet_flags & PKT_FROM_CLIENT)
+    else if (p->is_from_client())
     {
         SiInput->pdir = FTPP_SI_CLIENT_MODE;
     }

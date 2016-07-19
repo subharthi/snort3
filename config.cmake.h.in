@@ -81,9 +81,6 @@
 /* enable piglet in build */
 #cmakedefine PIGLET 1
 
-/* enable static piglet plugins in build */
-#cmakedefine STATIC_PIGLETS 1
-
 /* Set by user */
 #cmakedefine SIGNAL_SNORT_DUMP_STATS @SIGNAL_SNORT_DUMP_STATS@
 
@@ -97,7 +94,11 @@
 #cmakedefine SIGNAL_SNORT_ROTATE_STATS @SIGNAL_SNORT_ROTATE_STATS@
 
 /* enable ha capable build */
-#cmakedefine BUILD_SHELL 1
+#cmakedefine SHELL 1
+
+/* large pcap options */
+#cmakedefine _LARGEFILE_SOURCE 1
+#cmakedefine _FILE_OFFSET_BITS @_FILE_OFFSET_BITS@
 
 
 
@@ -289,16 +290,15 @@
 
 /*  Available libraries */
 
-/* openssl SHA available */
-#cmakedefine HAVE_OPENSSL_SHA 1
-
-#cmakedefine HAVE_OPENSSL_MD5 1
-
 /* hyperscan available */
 #cmakedefine HAVE_HYPERSCAN 1
 
 /* lzma available */
 #cmakedefine HAVE_LZMA 1
+
+/* safec available */
+#cmakedefine HAVE_SAFEC 1
+#cmakedefine ENABLE_SAFEC 1
 
 
 /* Library specific functions */

@@ -73,7 +73,7 @@ void print_file_stats()
 
     for (i = 0; i < FILE_ID_MAX; i++)
     {
-        const char* type_name =  snort_conf->file_config.file_type_name(i).c_str();
+        const char* type_name = file_type_name(i).c_str();
         if (type_name &&
             (file_stats.files_processed[i][0] || file_stats.files_processed[i][1] ))
         {
@@ -95,7 +95,7 @@ void print_file_stats()
 
     for (i = 0; i < FILE_ID_MAX; i++)
     {
-        const char* type_name = snort_conf->file_config.file_type_name(i).c_str();
+        const char* type_name = file_type_name(i).c_str();
         if (type_name &&
             (file_stats.files_processed[i][0] || file_stats.files_processed[i][1] ))
         {
@@ -131,7 +131,7 @@ void print_file_stats()
     processed_total[1] = 0;
     for (i = 0; i < FILE_ID_MAX; i++)
     {
-        const char* type_name = snort_conf->file_config.file_type_name(i).c_str();
+        const char* type_name = file_type_name(i).c_str();
         if (type_name &&
             (file_stats.signatures_processed[i][0] || file_stats.signatures_processed[i][1] ))
         {
@@ -252,49 +252,35 @@ void print_file_stats()
         }
     }
 
-    LogMessage("\n");
-    LogMessage("Total files processed:             " FMTu64("-10") " \n", file_stats.files_total);
-    LogMessage("Total files data processed:        " FMTu64(
-            "-10") "bytes \n", file_stats.file_data_total);
-    LogMessage("Total files buffered:              " FMTu64(
-            "-10") " \n", file_capture_stats.files_buffered_total);
-    LogMessage("Total files released:              " FMTu64(
-            "-10") " \n", file_capture_stats.files_released_total);
-    LogMessage("Total files freed:                 " FMTu64(
-            "-10") " \n", file_capture_stats.files_freed_total);
-    LogMessage("Total files captured:              " FMTu64(
-            "-10") " \n", file_capture_stats.files_captured_total);
-    LogMessage("Total files within one packet:     " FMTu64(
-            "-10") " \n", file_capture_stats.file_within_packet);
-    LogMessage("Total buffers allocated:           " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_allocated_total);
-    LogMessage("Total buffers freed:               " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_freed_total);
-    LogMessage("Total buffers released:            " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_released_total);
-    LogMessage("Maximum file buffers used:         " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_used_max);
-    LogMessage("Total buffers free errors:         " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_free_errors);
-    LogMessage("Total buffers release errors:      " FMTu64(
-            "-10") " \n", file_capture_stats.file_buffers_release_errors);
-    LogMessage("Total memcap failures:             " FMTu64(
-            "-10") " \n", file_capture_stats.file_memcap_failures_total);
-    LogMessage("Total memcap failures at reserve:  " FMTu64(
-            "-10") " \n", file_capture_stats.file_memcap_failures_reserve);
-    LogMessage("Total reserve failures:            " FMTu64(
-            "-10") " \n", file_capture_stats.file_reserve_failures);
-    LogMessage("Total file capture size min:       " FMTu64(
-            "-10") " \n", file_capture_stats.file_size_min);
-    LogMessage("Total file capture size max:       " FMTu64(
-            "-10") " \n", file_capture_stats.file_size_max);
-    LogMessage("Total capture max before reserve:  " FMTu64(
-            "-10") " \n", file_capture_stats.file_size_exceeded);
-    LogMessage("Total file signature max:          " FMTu64(
-            "-10") " \n", file_stats.files_sig_depth);
-
-    FileCapture::print_mem_usage();
 #endif
+
+    if (file_capture_stats.files_buffered_total || file_capture_stats.file_within_packet)
+    {
+        LogLabel("file capture stats");
+        LogCount("Files buffered", file_capture_stats.files_buffered_total);
+        LogCount("Files released", file_capture_stats.files_released_total);
+        LogCount("Files freed", file_capture_stats.files_freed_total);
+        LogCount("Files captured", file_capture_stats.files_captured_total);
+        LogCount("Files within one packet", file_capture_stats.file_within_packet);
+        LogCount("Buffers allocated", file_capture_stats.file_buffers_allocated_total);
+        LogCount("Buffers freed", file_capture_stats.file_buffers_freed_total);
+        LogCount("Buffers released", file_capture_stats.file_buffers_released_total);
+        LogCount("Max file buffers used", file_capture_stats.file_buffers_used_max);
+        LogCount("Buffers free errors", file_capture_stats.file_buffers_free_errors);
+        LogCount("Buffers release errors", file_capture_stats.file_buffers_release_errors);
+        LogCount("Total memcap failures", file_capture_stats.file_memcap_failures_total);
+        LogCount("Memcap failures at reserve", file_capture_stats.file_memcap_failures_reserve);
+        LogCount("Reserve failures", file_capture_stats.file_reserve_failures);
+        LogCount("File capture size min", file_capture_stats.file_size_min);
+        LogCount("File capture size max", file_capture_stats.file_size_max);
+        LogCount("File signature max", file_stats.files_sig_depth);
+
+        FileCapture::print_mem_usage();
+    }
+
+    LogLabel("file stats summary");
+    LogCount("Files processed",file_stats.files_total);
+    LogCount("Files data processed", file_stats.file_data_total);
 
 }
 

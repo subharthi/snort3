@@ -24,7 +24,7 @@
 // this provides a set of flags that can be set by environment variable to
 // turn on the output of specific debug messages.
 //
-// FIXIT-L this needs to be replaced with a module facility.
+// FIXIT-M debug flags needs to be replaced with a module facility.
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -51,11 +51,12 @@
 #define DEBUG_FLOWBITS        0x0000000000000400LL
 #define DEBUG_FILE            0x0000000000000800LL
 #define DEBUG_MEMORY          0x0000000000001000LL
-// FIXIT-L J latency doesn't use any debug messages
+// FIXIT-L latency doesn't use any debug messages
 #define DEBUG_LATENCY         0x0000000000002000LL
 #define DEBUG_SIDE_CHANNEL    0x0000000000004000LL
 #define DEBUG_CONNECTORS      0x0000000000008000LL
 #define DEBUG_HA              0x0000000000010000LL
+#define DEBUG_ANALYZER        0x0000000000020000LL
 
 // this env var uses the upper 32 bits of the flags:
 #define DEBUG_PLUGIN "SNORT_PP_DEBUG"
@@ -87,9 +88,10 @@
 #define DEBUG_DCE_TCP         0x0080000000000000LL
 #define DEBUG_DCE_SMB         0x0100000000000000LL
 #define DEBUG_DCE_COMMON      0x0200000000000000LL
+#define DEBUG_APPID           0x0400000000000000LL
 
 #ifdef PIGLET
-#define DEBUG_PIGLET          0x0400000000000000LL
+#define DEBUG_PIGLET          0x0800000000000000LL
 #endif
 
 
@@ -100,8 +102,7 @@ class SO_PUBLIC Debug
 public:
     static bool enabled(uint64_t flag);
 
-    static void print(
-        const char* file, int line, uint64_t dbg, const char* fmt, ...);
+    static void print(const char* file, int line, uint64_t dbg, const char* fmt, ...) __attribute__((format (printf, 4, 5)));
 
 private:
     static bool init;
@@ -120,7 +121,7 @@ private:
 
 #else
 #define DebugFormat(dbg, fmt, ...)
-#define DebugFormatNoFileLine(dbg, fmt, ...) 
+#define DebugFormatNoFileLine(dbg, fmt, ...)
 #define DebugMessage(dbg, msg)
 #define DEBUG_WRAP(code)
 #endif

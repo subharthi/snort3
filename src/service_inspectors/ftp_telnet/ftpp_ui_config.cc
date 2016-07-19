@@ -33,14 +33,11 @@
  */
 #include "ftpp_ui_config.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-
-#include "ftpp_return_codes.h"
-#include "ftp_cmd_lookup.h"
 #include "ftp_bounce_lookup.h"
+#include "ftp_cmd_lookup.h"
+#include "ftpp_return_codes.h"
+
+#include "utils/util.h"
 
 FTP_CLIENT_PROTO_CONF::FTP_CLIENT_PROTO_CONF()
 {
@@ -101,9 +98,9 @@ void ftpp_ui_config_reset_ftp_cmd_date_format(FTP_DATE_FMT* DateFmt)
 
     if (DateFmt->format_string)
     {
-        free(DateFmt->format_string);
+        snort_free(DateFmt->format_string);
     }
-    free(DateFmt);
+    snort_free(DateFmt);
 }
 
 /*
@@ -129,7 +126,7 @@ void ftpp_ui_config_reset_ftp_cmd_format(FTP_PARAM_FMT* ThisFmt)
         {
             ftpp_ui_config_reset_ftp_cmd_format(ThisFmt->choices[i]);
         }
-        free(ThisFmt->choices);
+        snort_free(ThisFmt->choices);
     }
 
     if (ThisFmt->next_param_fmt)
@@ -147,11 +144,10 @@ void ftpp_ui_config_reset_ftp_cmd_format(FTP_PARAM_FMT* ThisFmt)
     }
     if (ThisFmt->type == e_literal)
     {
-        free (ThisFmt->format.literal);
+        snort_free(ThisFmt->format.literal);
     }
 
-    memset(ThisFmt, 0, sizeof(FTP_PARAM_FMT));
-    free(ThisFmt);
+    snort_free(ThisFmt);
 }
 
 /*

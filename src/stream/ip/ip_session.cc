@@ -26,6 +26,7 @@
 #include "stream_ip.h"
 #include "ip_module.h"
 #include "ip_defrag.h"
+#include "ip_ha.h"
 #include "stream/stream.h"
 #include "flow/flow_control.h"
 #include "sfip/sf_ip.h"
@@ -39,7 +40,6 @@ const PegInfo ip_pegs[] =
     { "max frags", "max fragments" },
     { "reassembled", "reassembled datagrams" },
     { "discards", "fragments discarded" },
-    { "memory faults", "memory faults" },
     { "frag timeouts", "datagrams abandoned" },
     { "overlaps", "overlapping fragments" },
     { "anomalies", "anomalies detected" },
@@ -96,7 +96,7 @@ static inline void UpdateSession(Packet* p, Flow* lws)
 
     if ( !(lws->ssn_state.session_flags & SSNFLAG_ESTABLISHED) )
     {
-        if ( p->packet_flags & PKT_FROM_CLIENT )
+        if ( p->is_from_client() )
         {
             DebugMessage(DEBUG_STREAM_STATE,
                 "Stream: Updating on packet from client\n");
@@ -141,6 +141,7 @@ IpSession::IpSession(Flow* flow) : Session(flow)
 void IpSession::clear()
 {
     IpSessionCleanup(flow, &tracker);
+    IpHAManager::process_deletion(flow);
     ip_stats.current--;
 }
 

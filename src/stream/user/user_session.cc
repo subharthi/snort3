@@ -29,11 +29,13 @@
 #include "stream/stream.h"
 #include "stream/stream_splitter.h"
 #include "stream/paf.h"
-#include "perf_monitor/perf_monitor.h"
+
 #include "flow/flow_control.h"
-#include "sfip/sf_ip.h"
-#include "profiler/profiler.h"
 #include "main/snort.h"
+#include "perf_monitor/perf_monitor.h"
+#include "profiler/profiler.h"
+#include "sfip/sf_ip.h"
+#include "utils/util.h"
 
 THREAD_LOCAL ProfileStats user_perf_stats;
 
@@ -53,10 +55,7 @@ THREAD_LOCAL ProfileStats user_perf_stats;
 UserSegment* UserSegment::init(const uint8_t* p, unsigned n)
 {
     unsigned bucket = (n > BUCKET) ? n : BUCKET;
-    UserSegment* us = (UserSegment*)malloc(sizeof(*us)+bucket-1);
-
-    if ( !us )
-        return nullptr;
+    UserSegment* us = (UserSegment*)snort_alloc(sizeof(*us)+bucket-1);
 
     us->len = 0;
     us->offset = 0;
@@ -68,7 +67,7 @@ UserSegment* UserSegment::init(const uint8_t* p, unsigned n)
 
 void UserSegment::term(UserSegment* us)
 {
-    free(us);
+    snort_free(us);
 }
 
 unsigned UserSegment::avail()
@@ -140,8 +139,7 @@ void UserTracker::term()
 
 void UserTracker::detect(const Packet* p, const StreamBuffer* sb, uint32_t flags)
 {
-    Packet up;
-    up.reset();
+    Packet up(false);
 
     up.pkth = p->pkth;
     up.ptrs = p->ptrs;
@@ -315,7 +313,7 @@ void UserSession::start(Packet* p, Flow* flow)
     }
 
     {
-        flow->protocol = p->type();
+        flow->pkt_type = p->type();
 
         if (flow->ssn_state.session_flags & SSNFLAG_RESET)
             flow->ssn_state.session_flags &= ~SSNFLAG_RESET;
@@ -348,7 +346,7 @@ void UserSession::start(Packet* p, Flow* flow)
             flow->ssn_state.session_flags |= SSNFLAG_CLIENT_SWAPPED;
         }
 #if 0
-        // FIXIT-L TBD
+        // FIXIT-M implement stream_user perf stats
         //flow->set_expire(p, dstPolicy->session_timeout);
 
         // add user flavor to perf stats?
@@ -380,7 +378,7 @@ void UserSession::update(Packet* p, Flow* flow)
 
     if ( !(flow->ssn_state.session_flags & SSNFLAG_ESTABLISHED) )
     {
-        if ( p->packet_flags & PKT_FROM_CLIENT )
+        if ( p->is_from_client() )
             flow->ssn_state.session_flags |= SSNFLAG_SEEN_CLIENT;
         else
             flow->ssn_state.session_flags |= SSNFLAG_SEEN_SERVER;
@@ -400,7 +398,7 @@ void UserSession::update(Packet* p, Flow* flow)
 
 void UserSession::restart(Packet* p)
 {
-    bool c2s = p->packet_flags & PKT_FROM_CLIENT;
+    bool c2s = p->is_from_client();
     UserTracker& ut = c2s ? server : client;
     std::list<UserSegment*>::iterator it;
     ut.total = 0;
@@ -468,7 +466,7 @@ int UserSession::process(Packet* p)
     if ( stream.expired_session(flow, p) )
     {
         flow->restart();
-        // FIXIT count user session timeouts here
+        // FIXIT-M count user session timeouts here
 
 #ifdef ENABLE_EXPECTED_USER
         if ( flow_con->expected_session(flow, p))
@@ -483,7 +481,7 @@ int UserSession::process(Packet* p)
 
     update(p, flow);
 
-    UserTracker& ut = p->from_client() ? server : client;
+    UserTracker& ut = p->is_from_client() ? server : client;
 
     if ( p->ptrs.decode_flags & DECODE_SOF or !ut.splitter )
         start(p, flow);
@@ -499,7 +497,7 @@ int UserSession::process(Packet* p)
 
 //-------------------------------------------------------------------------
 // UserSession methods
-// FIXIT-L these are TBD after tcp is updated
+// FIXIT-M these are TBD after tcp is updated
 // some will be deleted, some refactored, some implemented
 //-------------------------------------------------------------------------
 

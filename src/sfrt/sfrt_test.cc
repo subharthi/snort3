@@ -24,8 +24,9 @@
 #include <string.h>
 
 #include "catch/catch.hpp"
-
 #include "main/snort_types.h"
+#include "utils/util.h"
+
 #include "sfrt/sfrt.h"
 #include "sfip/sf_ip.h"
 
@@ -69,7 +70,7 @@ static void test_sfrt_remove_after_insert()
 
     num_entries = sizeof(ip_lists)/sizeof(ip_lists[0]);
     if ( s_debug )
-        printf("Number of entries: %d \n",num_entries);
+        printf("Number of entries: %u \n",num_entries);
 
     dir = sfrt_new(DIR_16_4x4_16x5_4x4, IPv6, num_entries + 1, 200);
 
@@ -91,15 +92,15 @@ static void test_sfrt_remove_after_insert()
 
             sfip_pton(ip_entry->ip_str, &ip);
 
-            ip2_str = strdup(ip_entry->ip_str);
-            assert(ip2_str != NULL);
+            ip2_str = snort_strdup(ip_entry->ip_str);
             p = strchr(ip2_str, '/');
+
             if (p)
             {
                 *p = 0;
             }
             sfip_pton(ip2_str, &ip2);
-            free(ip2_str);
+            snort_free(ip2_str);
         }
 
         if ( s_debug )
@@ -143,8 +144,8 @@ static void test_sfrt_remove_after_insert()
 
     if ( s_debug )
     {
-        printf("Usage: %d bytes\n", sfrt_usage(dir));
-        printf("Number of entries: %d \n", sfrt_num_entries(dir));
+        printf("Usage: %u bytes\n", sfrt_usage(dir));
+        printf("Number of entries: %u \n", sfrt_num_entries(dir));
     }
 
     sfrt_free(dir);
@@ -160,7 +161,7 @@ static void test_sfrt_remove_after_insert_all()
     num_entries = sizeof(ip_lists)/sizeof(ip_lists[0]);
 
     if ( s_debug )
-        printf("Number of entries: %d \n",num_entries);
+        printf("Number of entries: %u \n",num_entries);
 
     dir = sfrt_new(DIR_16_4x4_16x5_4x4, IPv6, num_entries + 1, 200);
 
@@ -182,15 +183,15 @@ static void test_sfrt_remove_after_insert_all()
 
             sfip_pton(ip_entry->ip_str, &ip);
 
-            ip2_str = strdup(ip_entry->ip_str);
-            assert(ip2_str != NULL);
+            ip2_str = snort_strdup(ip_entry->ip_str);
             p = strchr(ip2_str, '/');
+
             if (p)
             {
                 *p = 0;
             }
             sfip_pton(ip2_str, &ip2);
-            free(ip2_str);
+            snort_free(ip2_str);
         }
 
         CHECK(sfrt_insert(&ip, ip.bits, &(ip_entry->value), RT_FAVOR_TIME, dir) ==
@@ -206,8 +207,8 @@ static void test_sfrt_remove_after_insert_all()
 
     if ( s_debug )
     {
-        printf("Usage: %d bytes\n", sfrt_usage(dir));
-        printf("Number of entries: %d \n", sfrt_num_entries(dir));
+        printf("Usage: %u bytes\n", sfrt_usage(dir));
+        printf("Number of entries: %u \n", sfrt_num_entries(dir));
     }
 
     /*remove all entries*/
@@ -234,7 +235,7 @@ static void test_sfrt_remove_after_insert_all()
         /*check the next entry still exist*/
         if (index + 1 < num_entries)
         {
-            IP_entry* ip_entry =  &(ip_lists[index + 1]);
+            ip_entry =  &(ip_lists[index + 1]);
             /*Parse IP*/
             if (ip_entry->ip_str)
                 sfip_pton(ip_entry->ip_str, &ip);
@@ -244,8 +245,8 @@ static void test_sfrt_remove_after_insert_all()
 
     if ( s_debug )
     {
-        printf("Usage: %d bytes\n", sfrt_usage(dir));
-        printf("Number of entries: %d \n", sfrt_num_entries(dir));
+        printf("Usage: %u bytes\n", sfrt_usage(dir));
+        printf("Number of entries: %u \n", sfrt_num_entries(dir));
     }
 
     sfrt_free(dir);

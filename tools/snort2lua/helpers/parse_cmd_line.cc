@@ -102,7 +102,7 @@ void ArgList::dump()
         printf("argv[%d]='%s'\n", i, argv[i]);
 }
 
-// FIXIT this chokes on -n -4 because it thinks
+// FIXIT-L this chokes on -n -4 because it thinks
 // -4 is another arg instead of an option to -n
 bool ArgList::get_arg(const char*& key, const char*& val)
 {
@@ -278,6 +278,9 @@ static void sing_conf_files(const char* /*key*/, const char* /*val*/)
 static void dont_parse_includes(const char* /*key*/, const char* /*val*/)
 { Converter::set_parse_includes(false); }
 
+static void enable_ohi(const char* /*key*/, const char* /*val*/)
+{ Converter::set_ohi_convert(true); }
+
 static void enable_markup(const char* /*key*/, const char* /*val*/)
 { Markup::enable(true); }
 
@@ -384,6 +387,9 @@ static ConfigFunc basic_opts[] =
 
     { "markup", enable_markup, "",
       "print help in asciidoc compatible format" },
+
+    { "ohi", enable_ohi, "",
+      "Use Old Http Inspect format" },
 
     { "output-file", parse_output_file, "<out_file>",
       "Same as '-o'. output the new Snort++ lua configuration to <out_file>" },
