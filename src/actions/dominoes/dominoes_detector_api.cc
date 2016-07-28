@@ -145,7 +145,7 @@ static int print_stats(lua_State *L){
     for(auto& iter_observation:  user_data->pDetector->observation_list) {
 	if (iter_observation->get_observation_name() == observation_name ) {
 		std::cout << "observation name:" <<  "\"" << observation_name << "\"" << "; " ;
-		iter_observation->get_rollup().printLevels();
+		iter_observation->get_rollup().print();
 		std::cout << std::endl;
 		return 0;
 	}
@@ -411,7 +411,7 @@ int range_query(lua_State *L){
                                 item_wrapper_ref->item->clear();
                                 item_wrapper_ref->item->setEndTime(et);
                                 item_wrapper_ref->item->setStartTime(st);
-		                item_wrapper_ref->observation->get_rollup().rangeQueryBottomUp(st, et, item_wrapper_ref->item);
+		                item_wrapper_ref->observation->get_rollup().rangeQuery(st, et, item_wrapper_ref->item);
 				// fillup the result_map
 				item_wrapper_ref->fill_result_table(feature);
 				item_wrapper_ref->result_table.print();
@@ -431,7 +431,7 @@ int point_query_now(lua_State *L){
                                 item_wrapper_ref->item->clear();
                                 item_wrapper_ref->item->setEndTime(et);
                                 item_wrapper_ref->item->setStartTime(st);
-                                iter_observation->get_rollup().pointQuery(et, item_wrapper_ref->item);
+                                iter_observation->get_rollup().query(et, item_wrapper_ref->item);
                           	item_wrapper_ref->fill_result_table(feature);
 				item_wrapper_ref->result_table.print();
 			        return 0;

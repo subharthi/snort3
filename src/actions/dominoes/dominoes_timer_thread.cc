@@ -47,7 +47,7 @@ void TimerCallbacks::operator()(unsigned _idx, const std::vector <std::shared_pt
                                		 // time_t ft = time(NULL);
 					accumulator_table_map_type table = iter_observation_list->get_statistics().dump();
 					Item *itm = new Item(st,ft,table);
-					iter_observation_list->get_rollup().addRollupItem(itm);
+					iter_observation_list->get_rollup().addItem(itm);
 				}					
 	
 				for (auto& callback : iter_detector_list->get_detector_package_info().tick_callback_fn_list) {

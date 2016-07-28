@@ -7,98 +7,116 @@
 #include <unistd.h>
 #include <list>
 #include <string>
-#include "actions/dominoes/accumulators/src/statistics.hpp"
 #include <fstream>
 #include <ios>
-
-//#include <boost/property_tree/ptree.hpp>
-//#include <boost/property_tree/json_parser.hpp>
-
 #include <boost/circular_buffer.hpp>
+#include "actions/dominoes/accumulators/src/statistics.hpp"
 
+/*  Gist for this file.
+    Each Item contains accumulator Data
+    Each Level contains 'n' number of Items 
+    Each RollupData contains 'x' number of Levels */ 
+
+/* Each instance of this class contains data for a certain period
+   (which is identified by Start and End time) */
 class Item
 {
-
     time_t startTime;
     time_t endTime;
     accumulator_table_map_type  data;
-   // int sum;
-public:
-    Item():startTime(0), endTime(0){}
-    
-    Item(time_t st, time_t et, accumulator_table_map_type d);
-   // :startTime(st), endTime(et), data(d){ }
-    
-    //This constructor is just for testing. Use the above one for implementation
-   // Item(time_t st, time_t et, accumulator_table_map_type d, int x)
-   // :startTime(st), endTime(et), data(d), sum(x){}
+#ifdef ROLLUP_DEBUG
+    int sum;
+#endif
 
-    accumulator_table_map_type getData();
+public:
+/* Constructors */
+#ifdef ROLLUP_DEBUG
+    Item();
+    Item(time_t st, time_t et, accumulator_table_map_type d, int x);
+#else
+    Item();
+#endif
+    Item(time_t st, time_t et, accumulator_table_map_type d);
+
+/* Getter and Setter Methods */    
     time_t getStartTime();
     time_t getEndTime();
-    void operator+=(Item &other);
+    accumulator_table_map_type getData();
+    void setStartTime(time_t _st);
+    void setEndTime(time_t _st);
+#ifdef ROLLUP_DEBUG
+    int getSum();
+#endif
+
+/* Print Methods */
     void print();
     void print_accumulator(std::string& accumulator_name, metric::metric_type feature);
 
-    void setStartTime(time_t _st);
-    void setEndTime(time_t _st);
-    void clear();
-    //boost::property_tree::ptree Jsonprint();
-   // int getSum();
+/* Overloaded Operators */    
+    void operator+=(Item &other);
 
+/* Others */
+    void clear();
 };
 
+/* Each Level is a collection of n number of Items */
 class Level
 {
     boost::circular_buffer<Item*> itemsList;
-    int noOfItemsToRollup;  // No.of items to rollup
-    int rollupItemsAval;   // Number of items available for Rollup
-    int size; // Total number of items stored in itemsList.
+    /* No.of items to rollup */
+    int noOfItemsToRollup;
+    /* Number of items available for Rollup */
+    int rollupItemsAval;
+    /* Total number of items stored in itemsList. */
+    int size;
+
 public:
-    Level() {}
+    /* Constructors */
+    Level();
     Level(int s, int n);
-    void levelPrint(void);
-    //boost::property_tree::ptree levelPrintJson();
+
+    /* Getter and Setter Methods */
+    int getSize();
+    int getNoOfItemsToRollup();
+    int getBufferCapacity();
+    boost::circular_buffer<Item*>& getItemsList();
+   
+    /* Print Methods */ 
+    void print(void);
+
+    /* Query Api's */
+    int query(time_t t, Item *result);
+    int rangeQuery(time_t *st, time_t *et, Item *result);
+
+    /* Others */
     int addItem(Item *itm);
     Item* mergeItems();
-    int findQuery(time_t t, Item *result);
-    int findRangeQuery(time_t *st, time_t *et, Item *result, bool bup);
-    int getSize() {return size;}
-    int get_noOfItemsToRollup();
-    int get_bufferCapacity();
-    boost::circular_buffer<Item*>& get_itemsList();
 };
 
+/* This class is used to collect all the rollup data*/
 class RollupData {
     int noOfLevels;
     std::list<Level*> levelsList;
+
 public:    
-  /*
-   RollupData(int n) : 
-        levelsList(),
-        noOfLevels(n)
-    {
-    } */
+    /* Constructors */
     RollupData();
+
+    /* Getter and Setter Methods */
     void setNoOfLevels(int _noOfLevels);
     int getNoOfLevels();
-    void addLevel(Level* l);
-    //void printJson_all(std::string json_file_name);
-   // void printJson_item(Item *itm, std::string json_file_name);
-    void printLevels();
-    void addRollupItem(Item *itm);
-    //int printJson_range(time_t st, time_t et, std::string json_file_name);
-   // int printJson_range_BottomUp(time_t st, time_t et, std::string json_file_name);
-    int pointQuery(time_t t, Item *result);
-    
-    // This does the search top to down. Search starts from rolled up levels to most
-    // granular level
+    std::list<Level*>& getLevelsList();
+
+    /* Print Methods */
+    void print();
+
+    /* Query Api's */
+    int query(time_t t, Item *result);
     int rangeQuery(time_t st, time_t et, Item *result);
-    
-    //This does the same rangeQuery reverse.
-    int rangeQueryBottomUp(time_t st, time_t et, Item *result);
-    
-    std::list<Level*>& get_levelsList();
+
+    /* Others */
+    void addLevel(Level* l);
+    void addItem(Item *itm);
 };
 
 #endif
