@@ -61,29 +61,16 @@ int main()
     rollup.printLevels();
     Item *x = new Item();
     printf("Searching for time:%ld\n", ft+20);
-    rollup.pointQuery(ft+20, x);
+    rollup.query(ft+20, x);
     free(x);
     x = new Item();
     printf("Searching for time:%ld, %ld\n", ft+60, ft+140);
-    rollup.printJson_range(ft+60, ft+140, "range1.json");
-    rollup.rangeQuery(ft+60, ft+140, x);
+    rollup.query(ft+60, ft+140, x);
     free(x);
     x = new Item();
     printf("Searching for time:%ld, %ld\n", ft+20, ft+40);
-    rollup.printJson_range(ft+20, ft+40, "range2.json");
-    rollup.rangeQuery(ft+20, ft+40, x);
+    rollup.query(ft+20, ft+40, x);
     free(x);
-    x = new Item();
-    printf("Searching for time(Bottom Up):%ld, %ld\n", ft+60, ft+140);
-    rollup.printJson_range_BottomUp(ft+60, ft+140, "range1_bup.json");
-    rollup.rangeQueryBottomUp(ft+60, ft+140, x);
-    free(x);
-    x = new Item();
-    printf("Searching for time(Bottom Up):%ld, %ld\n", ft+20, ft+40);
-    rollup.printJson_range_BottomUp(ft+20, ft+40, "range2_bup.json");
-    rollup.rangeQueryBottomUp(ft+20, ft+40, x);
-
-    rollup.printJson_all("sample3.json");
     
 /*    rollup.printLevels();
       Item *x = new Item();

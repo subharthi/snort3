@@ -2,6 +2,21 @@
 #include "actions/dominoes/dominoes_detector_api.h"
 #include "actions/dominoes/accumulators/src/accumulator_group.hpp"
 
+/* Helper Functions */
+static void printResult(std::list<Item*> result)
+{
+    std::list<Item*>::iterator rit;
+    std::cout << "Final Result Entries" << std::endl;
+    for (rit=result.begin(); rit!=result.end(); ++rit)
+    {
+        std::cout << "ST:" << (*rit)->getStartTime() << ", ET:" <<
+                              (*rit)->getEndTime();
+
+#ifdef ROLLUP_DEBUG
+        std::cout<< ", Sum:"<<  (*rit)->getSum() <<std::endl;
+#endif
+    }
+}
 
 /* Constructors */
 #ifndef ROLLUP_DEBUG
@@ -18,7 +33,7 @@ Item::Item(time_t st, time_t et, accumulator_table_map_type d)
 }
 
 #ifdef ROLLUP_DEBUG
-Item():startTime(0), endTime(0), sum(0)
+Item::Item():startTime(0), endTime(0), sum(0)
 {
 
 }
@@ -203,7 +218,10 @@ int Level::query(time_t t, Item *result)
             if (t >= itemsList[i]->getStartTime() && t <= itemsList[i]->getEndTime() )
             {
                 *result += *itemsList[i];
-                //printf("Test:Found Value:%d\n",itemsList[i].getSum());
+#ifdef ROLLUP_DEBUG
+                std::cout << "Found Value:" ;
+                itemsList[i]->print();
+#endif
                 return 0;
             }
         }
@@ -211,68 +229,115 @@ int Level::query(time_t t, Item *result)
     return -1;
 }
 
-int Level::rangeQuery(time_t *st, time_t *et, Item *result)
+int Level::query(time_t st, time_t et, std::list<Item*> &result)
 {
-
-    if (itemsList.empty()){
+    
+    if (itemsList.empty()) {
         return 1;
     }
 
-    Item* itmFront = itemsList.front();
-    Item* itmBack = itemsList.back();
+    Item *itmFront = itemsList.front();
+    Item *itmBack = itemsList.back();
 
-    // Complete range can be found in this level
-    // For now include as soon as the startTime and endTime match
-    // For cases like half match of the cell 
-    // (ex: if cell has 1 to 2 pm and range query starts from 1.30 to 2.30)
-    // include both the cells
-
-    if( *st >= itmFront->getStartTime() && *et <= itmBack->getEndTime())
-    {       
-        for (int i=0; i< itemsList.size(); i++)
-        {
-            // Full cell match
-            if (itemsList[i]->getStartTime()>= *st &&  itemsList[i]->getEndTime() <= *et ||
-                    // Partial cell matches.
-                    ((itemsList[i]->getStartTime() < *st)&& (*st < itemsList[i]->getEndTime())) ||
-                    //      itemsList[i].getStartTime() < et < itemsList[i].getEndTime())
-                ((itemsList[i]->getStartTime() < *et)&& (*et < itemsList[i]->getEndTime())))
-                {
-                    //TODO:Add the item
-                    *result += *itemsList[i];
-                } else if (itemsList[i]->getEndTime() > *et)
-                {
-                    // This is for optimization
-                    // Found all the cells. just break
-                    break;
-                }
-        }
-        return 0;
-    } else if ((*st < itmFront->getStartTime() && *et < itmFront->getStartTime() ) ||
-            (*st > itmBack->getEndTime() && *et > itmBack->getEndTime()))
+    if (result.empty())
     {
-        //Its not in this level at all
-        return 1;
-    }
-    else
-    {
-        // Only few elements are found in this level. 
-        // Few more items will be found in the level below with more recent data.
-        for (int i=0; i< itemsList.size(); i++)
+        //So far didnt find anything in the level above
+        //Check this level and add them
+        if ((st < itmFront->getStartTime() && et < itmFront->getStartTime() ) ||
+                (st > itmBack->getEndTime() && et > itmBack->getEndTime()))
         {
-            // Full cell match
-            if (itemsList[i]->getStartTime()>= *st &&  itemsList[i]->getEndTime() <= *et ||
-                    ((itemsList[i]->getStartTime() < *st)&& (*st <= itemsList[i]->getEndTime())) ||
-                    ((itemsList[i]->getStartTime() < *et)&& (*et < itemsList[i]->getEndTime())))
+            //Its not in this level at all
+            return 0;
+        } else {
+            for (int i=0; i<itemsList.size(); i++)
             {
-                //TODO:Add the item
-                // std::cout << "Adding Item 1:" << itemsList[i]->getSum()<< std::endl;
-                *result += *itemsList[i];
-                *st  = itemsList[i]->getEndTime()+1;
+                // Full cell match
+                if (itemsList[i]->getStartTime()>= st &&  itemsList[i]->getEndTime() <= et ||
+                // Partial cell matches.
+                        ((itemsList[i]->getStartTime() < st)&& (st < itemsList[i]->getEndTime())) ||
+                        ((itemsList[i]->getStartTime() < et)&& (et < itemsList[i]->getEndTime())))
+                {
+#ifdef ROLLUP_DEBUG
+                    std::cout << "Adding:"<< std::endl;
+                    itemsList[i]->print();
+#endif
+                    result.push_back(itemsList[i]);
+                }
             }
         }
-        return 1;
-    } 
+    } else {
+        // Something has been found in the previous level
+        time_t resFST = result.front()->getStartTime();
+        time_t resFET = result.front()->getEndTime();
+
+        if (resFST != st)
+        {
+            Item *temp = new Item();
+            query(st, temp);
+
+            if (temp->getStartTime()!= 0)
+            {
+                //This level also has the start time
+                if (temp->getStartTime() > resFST)
+                {
+                    //Lets optimize the start time
+                    bool first = true;
+                    std::list<Item*>::iterator it;
+                    for (int i=0; i<itemsList.size(); i++)
+                    {
+                        if (itemsList[i]->getStartTime() >= temp->getStartTime() && itemsList[i]->getEndTime() <= resFET)
+                        {
+                            if (first)
+                            {
+#ifdef ROLLUP_DEBUG
+                                std::cout << "Removing:"<< std::endl;
+                                result.front()->print();
+#endif
+                                result.pop_front();
+#ifdef ROLLUP_DEBUG
+                                std::cout << "Adding:" << std::endl;
+                                itemsList[i]->print();
+#endif
+                                result.push_front(itemsList[i]);
+                                first = false;
+                                it = result.begin();
+                            } else {
+#ifdef ROLLUP_DEBUG
+                                std::cout << "Adding:" << std::endl;
+                                itemsList[i]->print();
+#endif
+                                result.insert(it, itemsList[i]);
+                            }
+                            ++it;
+                        }
+                    }
+                }
+            }
+        }
+
+        time_t resBST = result.back()->getStartTime();
+        time_t resBET = result.back()->getEndTime();
+        if (resBET < et)
+        {
+            //Adding more here. Nothing to optimize
+            addRange(resBET+1, et, result);
+        } else {
+            //Optimize end time if we can
+
+            // If we can find the last cell start and end times in this level.
+            // update that with more granular data
+            if (isPresent(resBST))
+            {
+#ifdef ROLLUP_DEBUG
+                std::cout << "Removing:" << std::endl;
+                result.back()->print();
+#endif
+                result.pop_back();
+                addRange(resBST, et, result);
+            }
+        }
+    }
+    return 0;
 }
 
 /* Others */
@@ -300,6 +365,33 @@ Item* Level::mergeItems()
         *itm += *(*it);
     }
     return itm;
+}
+
+bool Level::isPresent(time_t ft)
+{
+    Item *itmFront = itemsList.front();
+    Item *itmBack = itemsList.back();
+
+    if (ft >= itmFront->getStartTime() &&
+        ft <= itmBack->getEndTime())
+        return true;
+
+    return false;
+}
+
+void Level::addRange(time_t st, time_t et, std::list<Item *> &result)
+{
+    for (int i=0; i<itemsList.size(); i++)
+    {
+        if (itemsList[i]->getStartTime() >= st && itemsList[i]->getStartTime() <= et)
+        {
+#ifdef ROLLUP_DEBUG
+            std::cout << "Adding:" << std::endl;
+            itemsList[i]->print();
+#endif
+            result.push_back(itemsList[i]);
+        }
+    }
 }
 
 /* RollupdData class member functions */
@@ -340,31 +432,39 @@ void RollupData::print()
 int RollupData::query(time_t t, Item *result)
 {
     int ret = -1;
-    //For the  point query, search happens bottom up. 
+    //For the  point query, search happens bottom up.
     //We start searching from most granular level to higher rollup levels
     for(auto &it:levelsList)
     {
         ret = it->query(t, result);
         if (ret == 0)
         {
-            return 0;  
+            return 0;
         }
     }
     return -1;
 }
 
-int RollupData::rangeQuery(time_t st, time_t et, Item *result)
+int RollupData::query(time_t st, time_t et, Item *res)
 {
-    int ret = -1; 
-
+    std::list<Item*> result;
     for (std::list<Level*>::reverse_iterator it = levelsList.rbegin(); it != levelsList.rend(); it++)
     {
-        ret = (*it)->rangeQuery(&st, &et, result);
-        if (ret == 0)
-            return 0;
+        (*it)->query(st, et, result);
     }
+#ifdef ROLLUP_DEBUG
+        std::cout << "Result Entries" << std::endl;
+        printResult(result);
+#endif
 
-    return -1;
+    std::list<Item*>::iterator rit;
+    for (rit=result.begin(); rit!=result.end(); ++rit)
+    {
+        *res += *(*rit);
+    }
+    std::cout << "Final Item" << std::endl;
+    res->print();
+    return 0;
 }
 
 /* Others */

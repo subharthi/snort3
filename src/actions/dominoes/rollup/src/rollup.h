@@ -12,6 +12,7 @@
 #include <boost/circular_buffer.hpp>
 #include "actions/dominoes/accumulators/src/statistics.hpp"
 
+#define ROLLUP_DEBUG
 /*  Gist for this file.
     Each Item contains accumulator Data
     Each Level contains 'n' number of Items 
@@ -86,11 +87,13 @@ public:
 
     /* Query Api's */
     int query(time_t t, Item *result);
-    int rangeQuery(time_t *st, time_t *et, Item *result);
+    int query(time_t st, time_t et, std::list<Item*> &result);
 
     /* Others */
     int addItem(Item *itm);
     Item* mergeItems();
+    bool isPresent(time_t);
+    void addRange(time_t st, time_t et, std::list<Item*> &result);
 };
 
 /* This class is used to collect all the rollup data*/
@@ -112,7 +115,7 @@ public:
 
     /* Query Api's */
     int query(time_t t, Item *result);
-    int rangeQuery(time_t st, time_t et, Item *result);
+    int query(time_t st, time_t et, Item *result);
 
     /* Others */
     void addLevel(Level* l);
