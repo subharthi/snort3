@@ -50,7 +50,7 @@ int main()
                  statistics(fake_pkt3);
              }
         }        
-        Item *itm = new Item(st,st+5,statistics.dump());
+        Item *itm = new Item(st,st+4,statistics.dump());
         rollup.printJson_item(itm, "tick_level.json");
         rollup.addRollupItem(itm);
         st+=5;
@@ -64,12 +64,12 @@ int main()
     rollup.query(ft+20, x);
     free(x);
     x = new Item();
-    printf("Searching for time:%ld, %ld\n", ft+60, ft+140);
-    rollup.query(ft+60, ft+140, x);
+    printf("Searching for time:%ld, %ld\n", ft+34, ft+54);
+    rollup.query(ft+34, ft+54, x);
     free(x);
     x = new Item();
-    printf("Searching for time:%ld, %ld\n", ft+20, ft+40);
-    rollup.query(ft+20, ft+40, x);
+    printf("Searching for time:%ld, %ld\n", ft+34, ft+114);
+    rollup.query(ft+34, ft+114, x);
     free(x);
     
 /*    rollup.printLevels();
