@@ -116,6 +116,7 @@ public:
     /* Query Api's */
     int query(time_t t, Item *result);
     int query(time_t st, time_t et, Item *result);
+    int query(time_t st, time_t et, std::list<Item *> &result);
 
     /* Others */
     void addLevel(Level* l);

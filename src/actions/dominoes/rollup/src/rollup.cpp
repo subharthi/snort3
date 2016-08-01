@@ -467,6 +467,19 @@ int RollupData::query(time_t st, time_t et, Item *res)
     return 0;
 }
 
+int RollupData::query(time_t st, time_t et, std::list<Item *> &result)
+{
+    for (std::list<Level*>::reverse_iterator it = levelsList.rbegin(); it != levelsList.rend(); it++)
+    {
+        (*it)->query(st, et, result);
+    }
+#ifdef ROLLUP_DEBUG
+        std::cout << "Result Entries" << std::endl;
+        printResult(result);
+#endif
+    return 0;
+}
+
 /* Others */
 void RollupData::addLevel(Level* l)
 {
