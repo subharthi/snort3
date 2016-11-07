@@ -378,16 +378,21 @@ void ItemWrapper::fill_result_table(metric::metric_type feature){
                                                  }
                                          }
 
-                                 }
-                                         temp_result.first = metric_list_temp[0];
-                                         temp_result.second = extract_result(feature, k.second);
-                                         result_table.append(temp_key_vec, temp_result);
+                                }
+				// metrics_list_temp only has the accumulators specified in the accumulator_group constuctor; hence,
+                                // we need to find the right accumulator by checking the decoded feature against elements of
+				// the metrics_list_temp, modified by: staghavi@cisco.com
+				for (int l = 0; l< metric_list_temp.size(); l++){
+				    if (metric::metric_type_decoder(feature) == metric_list_temp[l]) {
+					temp_result.first = metric_list_temp[l];
+                                        temp_result.second = extract_result(feature, k.second);
+                                        result_table.append(temp_key_vec, temp_result);
+				    }
+				}
                          }
                 }
 
-           }
-
-
+         }
 
 }
 
@@ -414,11 +419,39 @@ int range_query(lua_State *L){
 		                item_wrapper_ref->observation->get_rollup().query(st, et, item_wrapper_ref->item);
 				// fillup the result_map
 				item_wrapper_ref->fill_result_table(feature);
-				item_wrapper_ref->result_table.print();
+				//item_wrapper_ref->result_table.print();
                                 return 0;
         }
 }
 
+//ADDED by staghavi@cisco.com: Overloaded range_query capable of passing number of dominoes_tick before you want to query the rollup for 
+int range_query_duration(lua_State *L){
+
+
+        //TODO: Error check
+        uint32_t numberofpastticks = uint32_t(lua_tonumber(L,-1));
+        metric::metric_type  feature = static_cast<metric::metric_type>(lua_tonumber(L,-2)) ;
+        ItemWrapper* item_wrapper_ref = *(ItemWrapper**)lua_touserdata(L, -3);
+
+
+         time_t et = time(NULL);
+         time_t st = et - (numberofpastticks * dominoes_tick.tv_sec);
+         if (st < 0){
+                std::cout << " range too long "
+                          << std::endl;
+                return 0;
+        } else {
+                                // Clear ref
+                                item_wrapper_ref->item->clear();
+                                item_wrapper_ref->item->setEndTime(et);
+                                item_wrapper_ref->item->setStartTime(st);
+                                item_wrapper_ref->observation->get_rollup().rangeQueryBottomUp(st, et, item_wrapper_ref->item);
+                                // fillup the result_map
+                                item_wrapper_ref->fill_result_table(feature);
+                                //item_wrapper_ref->result_table.print();
+                                return 0;
+        }
+}
 int point_query_now(lua_State *L){
 	
 	metric::metric_type  feature = static_cast<metric::metric_type>(lua_tonumber(L,-1)) ;
@@ -530,7 +563,8 @@ static const luaL_reg detector_api[] = {
 static const luaL_reg Item[] = {
     {"new", rollup_item_lua_wrapper_new},
     {"range_query", range_query},
-    {"point_query_now", point_query_now},	
+    {"range_query_duration", range_query_duration},
+    {"point_query_now", point_query_now},
     {"get_data", rollup_item_lua_wrapper_get_data},
     {"get_st", rollup_item_lua_wrapper_get_start_time},
     {"get_et", rollup_item_lua_wrapper_get_end_time},

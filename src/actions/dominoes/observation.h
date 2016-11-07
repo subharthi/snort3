@@ -138,6 +138,7 @@ class Observation
     std::vector<std::string> metrics_list;
     RollupData  rollup;
     std::vector<Key_Transform> key_transform_list;  
+    std::vector<metric::metric_type> feature_list;
     /** helpers*/
     void set_event_filter(lua_State* L);
     void set_observation_name(lua_State* L );
@@ -162,6 +163,7 @@ class Observation
     RollupData& get_rollup(){ return  rollup; }
     std::vector<std::string>& get_key_list(){ return key_list;}
     std::vector<std::string>& get_metrics_list(){ return metrics_list;}
+    std::vector<metric::metric_type>& get_feature_list(){ return feature_list;}
     std::vector<Key_Transform>& get_key_transform_list() {return key_transform_list;}
 };   
 

@@ -4,6 +4,7 @@
 
 #ifndef EXPORT_H
 #define EXPORT_H
+#define RAPIDJSON_HAS_STDSTRING 1
 
 #include <boost/preprocessor.hpp>
 
@@ -19,10 +20,14 @@
 #include <stdio.h>
 #include <time.h>
 #include <fstream>
+#include <string>
 
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/prettywriter.h>
+#include <rapidjson/document.h>
+#include "rapidjson/filereadstream.h"
+#include "rapidjson/filewritestream.h"
 
 struct DetectorUserData;
 class Observation;
@@ -50,7 +55,8 @@ public:
     //Test only constor
     Export(std::shared_ptr<Detector> det_ref2, std::string json_file);
      
-    void fill_result_table(metric::metric_type  feature);
+    void fill_result_table();
+    void add_json_schema_header(std::string json_file_name);
     int print_json_point(metric::metric_type feature);
     int print_json_point(metric::metric_type feature, time_t s);
 

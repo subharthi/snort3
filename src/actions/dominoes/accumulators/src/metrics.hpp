@@ -1,3 +1,37 @@
+//--------------------------------------------------------------------------
+// Copyright (C) 2014-2016 Cisco and/or its affiliates. All rights reserved.
+// Copyright (C) 2005-2013 Sourcefire, Inc.
+//
+// This program is free software; you can redistribute it and/or modify it
+// under the terms of the GNU General Public License Version 2 as published
+// by the Free Software Foundation.  You may not use, modify or distribute
+// this program under any other version of the GNU General Public License.
+//
+// This program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+//--------------------------------------------------------------------------
+ 
+/*  metrics.hpp 
+**  Author: John Finn <johnfinn@cisco.com>
+*/
+
+/* This code had been slightly modified on October 2016 by Saman T. Zargar 
+   <staghavi@cisco.com> to add required macros to correctly generate 
+   droppable_feature_mpl_vector. Macros added are: METRICS_SEQ_3, MACRO3, and
+   COMPILETIME_NAME_DROPPABLE.  
+*/
+ 
+ 
+#ifndef __METRICS_H_
+#define __METRICS_H_
+ 
+
 #include <boost/preprocessor.hpp>
 
 #define METRICS_SEQ \
@@ -97,6 +131,13 @@
     tag::METRIC_NAME(elem)  \
     )
 
+//staghavi@cisco, added to create a droppable list of accumulators
+#define COMPILETIME_NAME_DROPPABLE(elem) \
+    BOOST_PP_IF(BOOST_PP_GREATER(BOOST_PP_SEQ_SIZE(elem),1), \
+    droppable<tag::METRIC_NAME(elem)<METRIC_PARAM(elem)>>, \
+    droppable<tag::METRIC_NAME(elem)>  \
+    )
+
 // TODO rename this
 // NAME_PARAM
 #define MACRO1(r, data, elem) \
@@ -107,7 +148,7 @@
 #define METRICS_SEQ_1 BOOST_PP_SEQ_FOR_EACH(MACRO1, _, METRICS_SEQ)
 
 // TODO rename this
-// NAME<PARAM>
+// tag::NAME<PARAM>
 #define MACRO2(r, data, elem) \
 ( \
   COMPILETIME_NAME(elem) \
@@ -115,6 +156,14 @@
 
 #define METRICS_SEQ_2 BOOST_PP_SEQ_FOR_EACH(MACRO2, _, METRICS_SEQ)
 
+// TODO rename this staghavi@cisco.com
+// droppable<tag::NAME<PARAM>>
+#define MACR12(r, data, elem) \
+( \
+  COMPILETIME_NAME_DROPPABLE(elem) \
+)
+
+#define METRICS_SEQ_12 BOOST_PP_SEQ_FOR_EACH(MACR12, _, METRICS_SEQ)
 
 // {NAME_PARAM, "NAME_PARAM"}
 #define DECODER_MACRO(r, data, i, elem) \
@@ -192,3 +241,5 @@
 ////METRIC(topk)
 ////METRIC(unique)
 ////METRIC(std)
+
+#endif

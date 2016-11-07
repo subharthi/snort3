@@ -91,7 +91,10 @@ static void lua_getfield_(lua_State* L, const std::string &field, var_template_t
 static void lua_getfield_stringify_keys(lua_State* L, const var_template_type kv_vector, std::vector<std::string> &var) {
    
   for ( auto &key: kv_vector){
-	var.push_back(boost::get<packet_data_container>(key).data.stringify());
+	//ADDED by staghavi@cisco.com, stringify and add the key, if and only if the key is not already in the vector
+	if (!(std::find (var.begin(), var.end(), boost::get<packet_data_container>(key).data.stringify()) != var.end())){
+	   var.push_back(boost::get<packet_data_container>(key).data.stringify());
+	}
   } 
 }
 
@@ -122,7 +125,10 @@ static void lua_getfield_stringify_features(lua_State* L, const std::vector<metr
 
     for (auto & feature: feature_list ){
     	std::cout << "Metrics: "<< metric::metric_type_decoder(feature) << std::endl;
-        var.push_back(metric::metric_type_decoder(feature));	
+	//ADDED by staghavi@cisco.com, stringify and add the feature, if and only if the feature is not already in the vector
+	if (!(std::find (var.begin(), var.end(), metric::metric_type_decoder(feature)) != var.end())){
+	     var.push_back(metric::metric_type_decoder(feature));
+	}
     }
 }
 

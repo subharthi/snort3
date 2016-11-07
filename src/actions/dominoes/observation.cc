@@ -101,7 +101,6 @@ void Observation::set_statistics(lua_State* L) {
             std::string name;
             var_template_type key_vector;
             var_template_type value_vector;
-            std::vector<metric::metric_type> accumulator_set_vector;
             int a_size_v;
 
             lua_rawgeti(L,-1,i);
@@ -122,8 +121,8 @@ void Observation::set_statistics(lua_State* L) {
             }
 
             try {
-                lua_getfield_(L,"features", accumulator_set_vector);
-		lua_getfield_stringify_features(L,accumulator_set_vector, metrics_list);
+                lua_getfield_(L,"features", feature_list);
+		lua_getfield_stringify_features(L,feature_list, metrics_list);
             } catch(...) {
                 Log("key must be a table");
                 exit(-1);
@@ -144,7 +143,7 @@ void Observation::set_statistics(lua_State* L) {
                 exit(-1);
             }
 	   */
-            get_statistics().add(name, key_vector, value_vector, accumulator_set_vector);
+            get_statistics().add(name, key_vector, value_vector, feature_list);
 	
  	    //TODO move this to factored code
            std::string keystring;

@@ -3,6 +3,7 @@
  */
 
 #include <vector>
+#include <ctime>
 
 #include <boost/mpl/placeholders.hpp>
 #include <boost/accumulators/framework/accumulator_base.hpp>
@@ -11,7 +12,8 @@
 #include <boost/accumulators/framework/parameters/sample.hpp>
 #include <boost/accumulators/framework/depends_on.hpp>
 #include <boost/accumulators/statistics_fwd.hpp>
-#include <boost/accumulators/statistics/count.hpp>
+//#include <boost/accumulators/statistics/count.hpp>
+#include "statistics/count.hpp"
 
 #include <boost/parameter/keyword.hpp>
 
@@ -61,7 +63,9 @@ namespace impl {
         }
     private:
         // TODO this should be seeded with something
-        boost::mt19937 gen;
+	// FIXED: staghavi@cisco, produces randomness out of thin air
+	std::time_t now = std::time(0);
+        boost::mt19937 gen{static_cast<std::uint32_t>(now)};
         int max_samples;
         std::vector<Sample> samples;
     };

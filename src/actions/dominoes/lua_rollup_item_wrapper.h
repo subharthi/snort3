@@ -29,8 +29,14 @@ class Observation;
 	return flag;
 
 
+//Modified by staghavi@cisco, extracting result for items with passed parameters
+// if(feature == i) return extract_result<tag::BOOST_PP_SEQ_ELEM(0,elem)>(data);
 #define MACRO_FEATURE_RANGE(r, data, i , elem) \
-	if(feature == i) return extract_result<tag::BOOST_PP_SEQ_ELEM(0,elem)>(data);
+	if(feature == i) return \
+          BOOST_PP_IF(BOOST_PP_GREATER(BOOST_PP_SEQ_SIZE(elem),1), \
+             extract_result<tag::BOOST_PP_SEQ_ELEM(0,elem)<BOOST_PP_SEQ_ELEM(1,elem ())>, \
+             extract_result<tag::BOOST_PP_SEQ_ELEM(0,elem) \
+          )>(data);
 
 #define GENERATE_FEATURE_SELECTION_CODE(ACCUMULATOR_GRP)  BOOST_PP_SEQ_FOR_EACH_I(MACRO_FEATURE_RANGE,ACCUMULATOR_GRP, METRICS_SEQ)
 

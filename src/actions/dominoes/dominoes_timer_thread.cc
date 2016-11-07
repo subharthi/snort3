@@ -48,6 +48,13 @@ void TimerCallbacks::operator()(unsigned _idx, const std::vector <std::shared_pt
 					accumulator_table_map_type table = iter_observation_list->get_statistics().dump();
 					Item *itm = new Item(st,ft,table);
 					iter_observation_list->get_rollup().addItem(itm);
+					//ADDED by staghavi@cisco, static call to export function per tick
+					//TODO: staghavi@cisco.com, Change where and how export function get called
+					Export *export_item = new Export(iter_detector_list, "tick.json");
+					//TODO: staghavi@cisco.com, Overload print_json_point without passing any feature to export
+					// all available features instead of only one!
+					metric::metric_type feature = static_cast<metric::metric_type>(3);
+					export_item->print_json_point(feature);
 				}					
 	
 				for (auto& callback : iter_detector_list->get_detector_package_info().tick_callback_fn_list) {

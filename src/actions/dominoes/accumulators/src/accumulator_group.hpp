@@ -1,3 +1,29 @@
+//--------------------------------------------------------------------------
+// Copyright (C) 2014-2016 Cisco and/or its affiliates. All rights reserved.
+// Copyright (C) 2005-2013 Sourcefire, Inc.
+//
+// This program is free software; you can redistribute it and/or modify it
+// under the terms of the GNU General Public License Version 2 as published
+// by the Free Software Foundation.  You may not use, modify or distribute
+// this program under any other version of the GNU General Public License.
+//
+// This program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+//--------------------------------------------------------------------------
+
+/*  accumulator_group.hpp 
+**  Author: John Finn <johnfinn@cisco.com>
+*/
+ 
+/* This code had been slightly modified by Saman T. Zargar <staghavi@cisco.com>
+   to correct the issues with how to assemple the droppable_feature_mpl_vector 
+*/
 
 #ifndef __ACCUMULATOR_GROUP_HPP__
 #define __ACCUMULATOR_GROUP_HPP__
@@ -70,7 +96,7 @@ TAG_METRIC_SEQ
 > tag_to_metric_map_type;
 
 
-typedef typename boost::mpl::transform<feature_mpl_vector, droppable<boost::mpl::_1> >::type droppable_feature_mpl_vector;
+typedef typename boost::mpl::vector<BOOST_PP_SEQ_ENUM(METRICS_SEQ_12)>::type droppable_feature_mpl_vector;
 typedef typename boost::mpl::transform<feature_mpl_vector, boost::add_pointer<boost::mpl::_1> >::type pointers_feature_mpl_vector;
 
 // TODO default parameters will be needed to prevent compilation errors

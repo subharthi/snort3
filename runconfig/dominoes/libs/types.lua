@@ -31,9 +31,11 @@ local metric_type = {
 	MIN = 2,
 	SUM = 3,
 	MEAN = 4,
-	SKEWNESS = 5,
-	MEDIAN = 6,
-	KURTOSIS = 7
+	VARIANCE = 5,
+	MOMENT_1 = 6,
+	SKEWBESS = 7,
+	MEDIAN = 8,
+	KURTOSIS = 9
 }
 --local metric_type = {
 --	COUNT = 0,

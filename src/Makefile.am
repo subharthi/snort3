@@ -110,7 +110,8 @@ ports/libports.a \
 utils/libutils.a \
 actions/dominoes/libdominoes.a \
 actions/dominoes/accumulators/libstatistics.a \
-actions/dominoes/rollup/librollup.a
+actions/dominoes/rollup/librollup.a \
+actions/dominoes/rollup/libexport.a
 
 SUBDIRS = \
 actions \

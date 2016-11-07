@@ -43,6 +43,7 @@
 #include "dominoes_detector.h"
 #include "dominoes_globals.h"
 #include "rollup/src/rollup.h"
+#include "rollup/src/export.h"
 #include "lua_rollup_item_wrapper.h"
 #define DETECTOR_API "detector_api"
 #define QUERY_API "query_api"
