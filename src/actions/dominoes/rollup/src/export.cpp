@@ -237,17 +237,7 @@ int Export::print_json_point(metric::metric_type feature){
 
     
     //For testing only
-    /*for(auto& iter_observation: detector_ref2->observation_list) {
-          if (iter_observation->get_observation_name() == observation_name ) {
-                  item->clear();
-                  item->setEndTime(et);
-                  item->setStartTime(st);
-                  iter_observation->get_rollup().query(et, item);
-                  fill_result_table();
-          }
-    }*/
-    
-    for(auto& iter_observation: detector_ref->pDetector->observation_list) {
+    for(auto& iter_observation: detector_ref2->observation_list) {
           if (iter_observation->get_observation_name() == observation_name ) {
                   item->clear();
                   item->setEndTime(et);
@@ -256,6 +246,16 @@ int Export::print_json_point(metric::metric_type feature){
                   fill_result_table();
           }
     }
+    
+    /*for(auto& iter_observation: detector_ref->pDetector->observation_list) {
+          if (iter_observation->get_observation_name() == observation_name ) {
+                  item->clear();
+                  item->setEndTime(et);
+                  item->setStartTime(st);
+                  iter_observation->get_rollup().query(et, item);
+                  fill_result_table();
+          }
+    }*/
 
     Document d, d2;
     FILE* fp = fopen(json_file_name.c_str(), "r");
