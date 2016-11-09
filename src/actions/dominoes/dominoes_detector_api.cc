@@ -445,7 +445,7 @@ int range_query_duration(lua_State *L){
                                 item_wrapper_ref->item->clear();
                                 item_wrapper_ref->item->setEndTime(et);
                                 item_wrapper_ref->item->setStartTime(st);
-                                item_wrapper_ref->observation->get_rollup().rangeQueryBottomUp(st, et, item_wrapper_ref->item);
+                                item_wrapper_ref->observation->get_rollup().query(st, et, item_wrapper_ref->item);
                                 // fillup the result_map
                                 item_wrapper_ref->fill_result_table(feature);
                                 //item_wrapper_ref->result_table.print();

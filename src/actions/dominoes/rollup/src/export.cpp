@@ -5,7 +5,7 @@
 using namespace rapidjson;
 
 //To be removed as this will be passed through lua script
-#define DOMINOES_PATH "/home/snortplus/snortplus/snort3/dominoes_json/"
+#define DOMINOES_PATH "/home/staghavi/snort3/dominoes_json/"
 
 Export::Export(DetectorUserData* det_ref, std::string obs_name, std::string accum_name, std::string json_file):lasttimeCalled(0), now(0)
 {
@@ -242,7 +242,7 @@ int Export::print_json_point(metric::metric_type feature){
                   item->clear();
                   item->setEndTime(et);
                   item->setStartTime(st);
-                  iter_observation->get_rollup().pointQuery(et, item);
+                  iter_observation->get_rollup().query(et, item);
                   fill_result_table();
           }
     }*/
@@ -252,8 +252,8 @@ int Export::print_json_point(metric::metric_type feature){
                   item->clear();
                   item->setEndTime(et);
                   item->setStartTime(st);
-                  iter_observation->get_rollup().pointQuery(et, item);
-                  fill_result_table(feature);
+                  iter_observation->get_rollup().query(et, item);
+                  fill_result_table();
           }
     }
 
@@ -313,7 +313,7 @@ int Export::print_json_point(metric::metric_type feature, time_t s){
                   item->clear();
                   item->setEndTime(et);
                   item->setStartTime(st);
-                  iter_observation->get_rollup().pointQuery(et, item);
+                  iter_observation->get_rollup().query(et, item);
                   fill_result_table();
           }
     }
@@ -376,7 +376,7 @@ int Export::print_json_range(metric::metric_type feature){
                   item->clear();
                   item->setEndTime(et);
                   item->setStartTime(st);
-                  iter_observation->get_rollup().rangeQueryBottomUp(st, et, item);
+                  iter_observation->get_rollup().query(st, et, item);
                   fill_result_table();
           }
     }
@@ -436,7 +436,7 @@ int Export::print_json_range(metric::metric_type feature, time_t s, time_t e){
                   item->clear();
                   item->setEndTime(et);
                   item->setStartTime(st);
-                  iter_observation->get_rollup().rangeQueryBottomUp(st, et, item);
+                  iter_observation->get_rollup().query(st, et, item);
                   fill_result_table();
           }
     }
